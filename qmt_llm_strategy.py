@@ -7,14 +7,18 @@ from dealer.llm_dealer import LLMDealer
 from dealer.futures_provider import MainContractProvider
 import pandas as pd
 from datetime import datetime, timedelta
+import re
 
 class LLMQMTFuturesStrategy(XtQuantTraderCallback):
     def __init__(self, path, session_id, account_id, symbol, llm_client):
         self.xt_trader = XtQuantTrader(path, session_id)
         self.account = StockAccount(account_id)
         self.symbol = symbol
+        match = re.match(r"([a-zA-Z]+)\d{4}\.[A-Z]+", symbol)
+        symbol_name = match.group(1).upper()
+        self.symbol_name = symbol_name
         self.data_provider = MainContractProvider()
-        self.llm_dealer = LLMDealer(llm_client, symbol, self.data_provider)
+        self.llm_dealer = LLMDealer(llm_client, symbol_name, self.data_provider)
         self.long_position_today = 0
         self.long_position_history = 0
         self.short_position_today = 0

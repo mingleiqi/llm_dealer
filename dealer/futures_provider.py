@@ -172,36 +172,43 @@ class MainContractProvider:
         :return: 包含行情数据的 DataFrame
         """
         import akshare as ak
+        
+        logging.info(f"Fetching data for symbol: {symbol}, frequency: {frequency}")
 
-        if frequency == 'D':
-            # 获取日线数据
-            df = ak.futures_zh_daily_sina(symbol=symbol)
-            df['datetime'] = pd.to_datetime(df['date'])
-            df = df.set_index('datetime')
-            #df = df[(df.index >= pd.to_datetime(start_date)) & (df.index <= pd.to_datetime(end_date))]
-        else:
-            # 获取分钟数据
-            period_map = {'1m': '1', '5m': '5', '15m': '15', '30m': '30', '60m': '60'}
-            period = period_map.get(frequency, '1')
-            df = ak.futures_zh_minute_sina(symbol=symbol, period=period)
-            df['datetime'] = pd.to_datetime(df['datetime'])
-            df = df.set_index('datetime')
+        try:
+            if frequency == 'D':
+                # 获取日线数据
+                df = ak.futures_zh_daily_sina(symbol=symbol)
+                df['datetime'] = pd.to_datetime(df['date'])
+                df = df.set_index('datetime')
+            else:
+                # 获取分钟数据
+                period_map = {'1m': '1', '5m': '5', '15m': '15', '30m': '30', '60m': '60'}
+                period = period_map.get(frequency, '1')
+                df = ak.futures_zh_minute_sina(symbol=symbol, period=period)
+                df['datetime'] = pd.to_datetime(df['datetime'])
+                df = df.set_index('datetime')
 
-        # 统一列名
-        df = df.rename(columns={
-            'open': 'open',
-            'high': 'high',
-            'low': 'low',
-            'close': 'close',
-            'volume': 'volume',
-            'hold': 'open_interest'
-        })
+            logging.info(f"Data fetched successfully. Shape: {df.shape}")
 
-        # 选择需要的列
-        columns_to_keep = ['open', 'high', 'low', 'close', 'volume', 'open_interest']
-        df = df[columns_to_keep]
+            # 统一列名
+            df = df.rename(columns={
+                'open': 'open',
+                'high': 'high',
+                'low': 'low',
+                'close': 'close',
+                'volume': 'volume',
+                'hold': 'open_interest'
+            })
 
-        return df
+            # 选择需要的列
+            columns_to_keep = ['open', 'high', 'low', 'close', 'volume', 'open_interest']
+            df = df[columns_to_keep]
+
+            return df
+        except Exception as e:
+            logging.error(f"Error fetching data for symbol {symbol}, frequency {frequency}: {str(e)}")
+            return pd.DataFrame(columns=['open', 'high', 'low', 'close', 'volume', 'open_interest'])
 
     def get_rqbar(self, symbol: str, start_date: str, end_date: str, frequency: str = '1m', adjust_type: str = 'none'):
         if symbol.endswith('0'):
