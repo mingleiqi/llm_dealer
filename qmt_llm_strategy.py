@@ -8,14 +8,17 @@ from dealer.futures_provider import MainContractProvider
 import pandas as pd
 from datetime import datetime, timedelta
 
-class LLMQMTStrategy(XtQuantTraderCallback):
+class LLMQMTFuturesStrategy(XtQuantTraderCallback):
     def __init__(self, path, session_id, account_id, symbol, llm_client):
         self.xt_trader = XtQuantTrader(path, session_id)
         self.account = StockAccount(account_id)
         self.symbol = symbol
         self.data_provider = MainContractProvider()
         self.llm_dealer = LLMDealer(llm_client, symbol, self.data_provider)
-        self.current_position = 0
+        self.long_position_today = 0
+        self.long_position_history = 0
+        self.short_position_today = 0
+        self.short_position_history = 0
         self.last_trade_time = None
         self.last_msg = ""
 
@@ -35,11 +38,19 @@ class LLMQMTStrategy(XtQuantTraderCallback):
 
     def on_stock_trade(self, trade):
         print(f"Trade callback: {trade.account_id}, {trade.stock_code}, {trade.order_id}")
-        # Update current position
-        if trade.order_type == xtconstant.STOCK_BUY:
-            self.current_position += trade.traded_volume
-        elif trade.order_type == xtconstant.STOCK_SELL:
-            self.current_position -= trade.traded_volume
+        # Update positions based on the trade
+        if trade.order_type == xtconstant.FUTURE_OPEN_LONG:
+            self.long_position_today += trade.traded_volume
+        elif trade.order_type == xtconstant.FUTURE_CLOSE_LONG_TODAY:
+            self.long_position_today -= trade.traded_volume
+        elif trade.order_type == xtconstant.FUTURE_CLOSE_LONG_HISTORY:
+            self.long_position_history -= trade.traded_volume
+        elif trade.order_type == xtconstant.FUTURE_OPEN_SHORT:
+            self.short_position_today += trade.traded_volume
+        elif trade.order_type == xtconstant.FUTURE_CLOSE_SHORT_TODAY:
+            self.short_position_today -= trade.traded_volume
+        elif trade.order_type == xtconstant.FUTURE_CLOSE_SHORT_HISTORY:
+            self.short_position_history -= trade.traded_volume
 
     def on_order_error(self, order_error):
         print(f"Order error: {order_error.order_id}, {order_error.error_id}, {order_error.error_msg}")
@@ -78,17 +89,31 @@ class LLMQMTStrategy(XtQuantTraderCallback):
 
     def execute_trade(self, instruction, quantity, price):
         if instruction == 'buy':
-            order_id = self.xt_trader.order_stock(self.account, self.symbol, xtconstant.STOCK_BUY, 
+            order_id = self.xt_trader.order_stock(self.account, self.symbol, xtconstant.FUTURE_OPEN_LONG, 
                                                   quantity, xtconstant.FIX_PRICE, price, 'LLM_strategy', 'LLM_buy')
         elif instruction == 'sell':
-            order_id = self.xt_trader.order_stock(self.account, self.symbol, xtconstant.STOCK_SELL, 
-                                                  min(quantity, self.current_position), xtconstant.FIX_PRICE, price, 'LLM_strategy', 'LLM_sell')
+            # Close long positions, prioritize closing today's positions
+            today_quantity = min(quantity, self.long_position_today)
+            if today_quantity > 0:
+                self.xt_trader.order_stock(self.account, self.symbol, xtconstant.FUTURE_CLOSE_LONG_TODAY, 
+                                           today_quantity, xtconstant.FIX_PRICE, price, 'LLM_strategy', 'LLM_sell_today')
+            history_quantity = min(quantity - today_quantity, self.long_position_history)
+            if history_quantity > 0:
+                self.xt_trader.order_stock(self.account, self.symbol, xtconstant.FUTURE_CLOSE_LONG_HISTORY, 
+                                           history_quantity, xtconstant.FIX_PRICE, price, 'LLM_strategy', 'LLM_sell_history')
         elif instruction == 'short':
-            # Note: Short selling might not be supported for all accounts/markets
-            print("Short selling is not implemented in this example")
+            order_id = self.xt_trader.order_stock(self.account, self.symbol, xtconstant.FUTURE_OPEN_SHORT, 
+                                                  quantity, xtconstant.FIX_PRICE, price, 'LLM_strategy', 'LLM_short')
         elif instruction == 'cover':
-            # Note: Covering short positions might not be supported for all accounts/markets
-            print("Covering short positions is not implemented in this example")
+            # Close short positions, prioritize closing today's positions
+            today_quantity = min(quantity, self.short_position_today)
+            if today_quantity > 0:
+                self.xt_trader.order_stock(self.account, self.symbol, xtconstant.FUTURE_CLOSE_SHORT_TODAY, 
+                                           today_quantity, xtconstant.FIX_PRICE, price, 'LLM_strategy', 'LLM_cover_today')
+            history_quantity = min(quantity - today_quantity, self.short_position_history)
+            if history_quantity > 0:
+                self.xt_trader.order_stock(self.account, self.symbol, xtconstant.FUTURE_CLOSE_SHORT_HISTORY, 
+                                           history_quantity, xtconstant.FIX_PRICE, price, 'LLM_strategy', 'LLM_cover_history')
         else:
             print(f"Unknown instruction: {instruction}")
 
@@ -96,7 +121,6 @@ class LLMQMTStrategy(XtQuantTraderCallback):
         while True:
             current_time = datetime.now()
             
-            # Check if it's trading time (you may need to implement this function)
             if not self.is_trading_time(current_time):
                 continue
 
@@ -120,14 +144,19 @@ class LLMQMTStrategy(XtQuantTraderCallback):
         return (9 <= current_time.hour < 15) or (21 <= current_time.hour < 23)
 
 if __name__ == "__main__":
-    from core.llms.mini_max_client import MiniMaxClient 
-
+    from core.llms.mini_max_client import MiniMaxClient
     path = r'D:\app\迅投\userdata'
-    session_id = 123457
-    account_id = '1000000365'
-    symbol = 'sc2409.ine'  # Example stock code
-    llm_client =  MiniMaxClient()  # You need to provide an actual LLM client here
+    import random
 
-    strategy = LLMQMTStrategy(path, session_id, account_id, symbol, llm_client)
+    def generate_six_digit_random_number():
+        return random.randint(100000, 999999)
+
+    session_id = generate_six_digit_random_number()
+    account_id = '101777'
+    symbol = 'SC2307.INE'  # Example futures contract code
+    llm_client = MiniMaxClient()  # You need to provide an actual LLM client here
+
+    strategy = LLMQMTFuturesStrategy(path, session_id, account_id, symbol, llm_client)
     strategy.start()
     strategy.run_strategy()
+    
