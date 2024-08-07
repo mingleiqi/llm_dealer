@@ -153,7 +153,7 @@ if __name__ == "__main__":
 
     session_id = generate_six_digit_random_number()
     account_id = '101777'
-    symbol = 'SC2307.INE'  # Example futures contract code
+    symbol = 'sc2409.INE'  # Example futures contract code
     llm_client = MiniMaxClient()  # You need to provide an actual LLM client here
 
     strategy = LLMQMTFuturesStrategy(path, session_id, account_id, symbol, llm_client)

@@ -1,12 +1,27 @@
+import sys
+import importlib.util
+from threading import Lock
+
+_module_cache = {}
+_module_cache_lock = Lock()
+
 def lazy(fullname):
-    import sys
-    import importlib.util
+    with _module_cache_lock:
+        if fullname in _module_cache:
+            return _module_cache[fullname]
+
     try:
-        return sys.modules[fullname]
-    except KeyError:
         spec = importlib.util.find_spec(fullname)
+        if spec is None:
+            raise ModuleNotFoundError(f"No module named '{fullname}'")
+
         module = importlib.util.module_from_spec(spec)
         loader = importlib.util.LazyLoader(spec.loader)
-        # Make module with proper locking and get it inserted into sys.modules.
         loader.exec_module(module)
+
+        with _module_cache_lock:
+            _module_cache[fullname] = module
+
         return module
+    except (ModuleNotFoundError, ImportError) as e:
+        raise ImportError(f"Could not import module '{fullname}': {e}")
