@@ -177,7 +177,7 @@ class MainContractProvider:
             df = ak.futures_zh_daily_sina(symbol=symbol)
             df['datetime'] = pd.to_datetime(df['date'])
             df = df.set_index('datetime')
-            df = df[(df.index >= pd.to_datetime(start_date)) & (df.index <= pd.to_datetime(end_date))]
+            #df = df[(df.index >= pd.to_datetime(start_date)) & (df.index <= pd.to_datetime(end_date))]
         else:
             # 获取分钟数据
             period_map = {'1m': '1', '5m': '5', '15m': '15', '30m': '30', '60m': '60'}
