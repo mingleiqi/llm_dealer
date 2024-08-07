@@ -10,6 +10,7 @@ import pandas as pd
 import requests
 from core.utils.single_ton import Singleton
 from dealer.lazy import lazy
+import logging
 rq = None
 from core.config import get_key
 rq_user = get_key('rq_user')
@@ -20,6 +21,8 @@ if rq_user and rq_pwd:
         rq.init(rq_user, rq_pwd)
 
 from core.tushare_doc.ts_code_matcher import StringMatcher
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
 
 class MainContractGetter(StringMatcher, metaclass=Singleton):
     def __init__(self):
@@ -163,52 +166,68 @@ class MainContractProvider:
             print(f"An error occurred: {e}")
             return None
 
-    def get_akbar(self, symbol: str, frequency: str = '1m'):
+
+    def get_akbar(self, symbol: str, frequency: str = '1m') -> Optional[pd.DataFrame]:
         """
-        获取 AKShare 的期货行情数据
+        获取期货行情数据，首选 AKShare，如果失败则尝试备用数据源
 
         :param symbol: 期货合约代码
         :param frequency: 数据频率，可选 '1m', '5m', '15m', '30m', '60m', 'D'
-        :return: 包含行情数据的 DataFrame
+        :return: 包含行情数据的 DataFrame，如果无法获取数据则返回 None
         """
-        import akshare as ak
+        columns_to_keep = ['open', 'high', 'low', 'close', 'volume', 'open_interest']
         
-        logging.info(f"Fetching data for symbol: {symbol}, frequency: {frequency}")
+        def fetch_akshare_data():
+            try:
+                # Ensure the symbol ends with "0"
+                if not symbol.endswith("0"):
+                    adjusted_symbol = f"{symbol}0"
+                else:
+                    adjusted_symbol = symbol
 
-        try:
-            if frequency == 'D':
-                # 获取日线数据
-                df = ak.futures_zh_daily_sina(symbol=symbol)
-                df['datetime'] = pd.to_datetime(df['date'])
-                df = df.set_index('datetime')
-            else:
-                # 获取分钟数据
-                period_map = {'1m': '1', '5m': '5', '15m': '15', '30m': '30', '60m': '60'}
-                period = period_map.get(frequency, '1')
-                df = ak.futures_zh_minute_sina(symbol=symbol, period=period)
-                df['datetime'] = pd.to_datetime(df['datetime'])
-                df = df.set_index('datetime')
+                if frequency == 'D':
+                    df = ak.futures_zh_daily_sina(symbol=adjusted_symbol)
+                    df['datetime'] = pd.to_datetime(df['date'])
+                    df = df.set_index('datetime')
+                else:
+                    period_map = {'1m': '1', '5m': '5', '15m': '15', '30m': '30', '60m': '60'}
+                    period = period_map.get(frequency, '1')
+                    df = ak.futures_zh_minute_sina(symbol=adjusted_symbol, period=period)
+                    df['datetime'] = pd.to_datetime(df['datetime'])
+                    df = df.set_index('datetime')
 
-            logging.info(f"Data fetched successfully. Shape: {df.shape}")
+                df = df.rename(columns={'hold': 'open_interest'})
+                return df[columns_to_keep]
+            except Exception as e:
+                logging.error(f"Error fetching data from AKShare for symbol {adjusted_symbol}, frequency {frequency}: {str(e)}")
+                return None
 
-            # 统一列名
-            df = df.rename(columns={
-                'open': 'open',
-                'high': 'high',
-                'low': 'low',
-                'close': 'close',
-                'volume': 'volume',
-                'hold': 'open_interest'
-            })
+        def fetch_alternative_data():
+            # Implement an alternative data fetching method here
+            # For example, you could use another API or a local data source
+            logging.warning(f"Attempting to fetch data from alternative source for symbol {symbol}, frequency {frequency}")
+            return None  # Replace with actual alternative data fetching logic
 
-            # 选择需要的列
-            columns_to_keep = ['open', 'high', 'low', 'close', 'volume', 'open_interest']
-            df = df[columns_to_keep]
+        # Try to fetch data from AKShare
+        df = fetch_akshare_data()
+        
+        # If AKShare fails, try the alternative source
+        if df is None:
+            df = fetch_alternative_data()
+        
+        # If both sources fail, return None
+        if df is None:
+            logging.error(f"Failed to fetch data for symbol {symbol}, frequency {frequency} from all sources")
+            return None
 
-            return df
-        except Exception as e:
-            logging.error(f"Error fetching data for symbol {symbol}, frequency {frequency}: {str(e)}")
-            return pd.DataFrame(columns=['open', 'high', 'low', 'close', 'volume', 'open_interest'])
+        # Ensure all necessary columns exist
+        for col in columns_to_keep:
+            if col not in df.columns:
+                df[col] = None
+
+        return df
+
+
 
     def get_rqbar(self, symbol: str, start_date: str, end_date: str, frequency: str = '1m', adjust_type: str = 'none'):
         if symbol.endswith('0'):

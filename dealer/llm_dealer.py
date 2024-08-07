@@ -338,34 +338,23 @@ class LLMDealer:
             else:
                 df = self.data_provider.get_akbar(self.symbol, frequency)
             
-            if df.empty:
-                # If the DataFrame is empty, return an empty DataFrame with the correct columns
-                return pd.DataFrame(columns=['datetime', 'open', 'high', 'low', 'close', 'volume', 'hold'])
+            if df is None or df.empty:
+                self.logger.warning(f"No data available for period {period}")
+                return pd.DataFrame(columns=['datetime', 'open', 'high', 'low', 'close', 'volume', 'open_interest'])
             
             df = df.reset_index()
-            
-            # Rename columns to match the expected format
-            df = df.rename(columns={
-                'datetime': 'datetime',
-                'open': 'open',
-                'high': 'high',
-                'low': 'low',
-                'close': 'close',
-                'volume': 'volume',
-                'open_interest': 'hold'
-            })
             
             # Ensure 'datetime' column is datetime type
             df['datetime'] = pd.to_datetime(df['datetime'])
             
             # Select and order the required columns
-            columns_to_keep = ['datetime', 'open', 'high', 'low', 'close', 'volume', 'hold']
+            columns_to_keep = ['datetime', 'open', 'high', 'low', 'close', 'volume', 'open_interest']
             df = df[columns_to_keep]
             
             return self._limit_history(df, period)
         except Exception as e:
-            self.logger.error(f"Error initializing history for period {period}: {str(e)}")
-            return pd.DataFrame(columns=['datetime', 'open', 'high', 'low', 'close', 'volume', 'hold'])
+            self.logger.error(f"Error initializing history for period {period}: {str(e)}", exc_info=True)
+            return pd.DataFrame(columns=['datetime', 'open', 'high', 'low', 'close', 'volume', 'open_interest'])
 
     def _limit_history(self, df: pd.DataFrame, period: str) -> pd.DataFrame:
         """根据时间周期限制历史数据的长度"""
