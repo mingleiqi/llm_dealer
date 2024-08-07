@@ -99,6 +99,7 @@ class LLMDealer:
                  max_daily_bars: int = 60, max_hourly_bars: int = 30, max_minute_bars: int = 240,
                  backtest_date: Optional[str] = None, compact_mode: bool = False,
                  max_position: int = 1):
+        self._setup_logging()
         self.symbol = symbol
         self.night_closing_time = self._get_night_closing_time()
         self.backtest_date = backtest_date
@@ -130,10 +131,9 @@ class LLMDealer:
             (dt_time(0, 0), dt_time(2, 30))
         ]
         logging.basicConfig(level=logging.DEBUG)
-        self.logger = logging.getLogger(__name__)
         self.timezone = pytz.timezone('Asia/Shanghai') 
-        self._setup_logging()
         
+
         self.daily_history = self._initialize_history('D')
         self.hourly_history = self._initialize_history('60')  
         self.minute_history = self._initialize_history('1')
