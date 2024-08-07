@@ -6,3 +6,4 @@ rapidfuzz
 python-Levenshtein
 ta
 tqdm
+jieba

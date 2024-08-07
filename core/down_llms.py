@@ -27,6 +27,8 @@ files_to_download = [
     "core/interpreter/__init__.py",
     "core/interpreter/ast_code_runner.py",
     "core/interpreter/data_summarizer.py",
+    "core/tushare_doc/__init__.py",
+    "core/tushare_doc/ts_code_matcher.py",
 
 ]
 

@@ -16,7 +16,8 @@ rq_user = get_key('rq_user')
 rq_pwd = get_key('rq_pwd')
 if rq_user and rq_pwd:
     rq = lazy("rqdatac")
-    rq.init(rq_user,rq_pwd)
+    if rq:
+        rq.init(rq_user, rq_pwd)
 
 from core.tushare_doc.ts_code_matcher import StringMatcher
 
