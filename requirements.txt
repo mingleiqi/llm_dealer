@@ -1,0 +1,8 @@
+akshare
+rqdatac
+tushare
+fuzzywuzzy
+rapidfuzz
+python-Levenshtein
+ta
+tqdm
