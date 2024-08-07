@@ -1,48 +1,256 @@
-#coding=utf-8
+# coding:utf-8
+import time
+import datetime
+from xtquant import xtdata
 from xtquant.xttrader import XtQuantTrader, XtQuantTraderCallback
 from xtquant.xttype import StockAccount
 from xtquant import xtconstant
-from xtquant import xtdata
 from dealer.llm_dealer import LLMDealer
 from dealer.futures_provider import MainContractProvider
 import pandas as pd
 from datetime import datetime, timedelta
 import re
+import logging
+import pytz
+
+# 设置日志
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+# 设置北京时区
+beijing_tz = pytz.timezone('Asia/Shanghai')
+
+
+# coding:utf-8
+import time
+import datetime
+from xtquant import xtdata
+from xtquant.xttrader import XtQuantTrader, XtQuantTraderCallback
+from xtquant.xttype import StockAccount
+from xtquant import xtconstant
+from dealer.llm_dealer import LLMDealer
+from dealer.futures_provider import MainContractProvider
+import pandas as pd
+from datetime import datetime, timedelta
+import re
+import logging
+import pytz
+
+# 设置日志
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+# 设置北京时区
+beijing_tz = pytz.timezone('Asia/Shanghai')
 
 class LLMQMTFuturesStrategy(XtQuantTraderCallback):
-    def __init__(self, path, session_id, account_id, symbol, llm_client):
-        self.xt_trader = XtQuantTrader(path, session_id)
-        self.account = StockAccount(account_id)
+    def __init__(self, path, session_id, account_id, symbol, llm_client, start_time=None):
+        self.path = path
+        self.session_id = session_id
+        self.account_id = account_id
         self.symbol = symbol
         match = re.match(r"([a-zA-Z]+)\d{4}\.[A-Z]+", symbol)
-        symbol_name = match.group(1).upper()
-        self.symbol_name = symbol_name
+        self.symbol_name = match.group(1).upper() if match else symbol
         self.data_provider = MainContractProvider()
-        self.llm_dealer = LLMDealer(llm_client, symbol_name, self.data_provider)
+        self.llm_dealer = LLMDealer(llm_client, self.symbol_name, self.data_provider)
         self.long_position_today = 0
         self.long_position_history = 0
         self.short_position_today = 0
         self.short_position_history = 0
         self.last_trade_time = None
         self.last_msg = ""
+        self.xt_trader = None
+        self.account = None
+        self.last_processed_minute = None
+        self.last_processed_time = None
+        self.current_bar_data = None
+        
+        # 使用北京时间
+        current_time = datetime.now(beijing_tz)
+        self.start_time = start_time or (current_time - timedelta(hours=1))
+        if self.start_time.tzinfo is None:
+            self.start_time = beijing_tz.localize(self.start_time)
+        
+        logger.info(f"Strategy initialized with start time: {self.start_time}")
 
     def start(self):
+        logger.info("Starting LLMQMTFuturesStrategy")
+        self.xt_trader = XtQuantTrader(self.path, self.session_id)
+        
+        # 创建资金账号对象，期货账号为FUTURE
+        self.account = StockAccount(self.account_id, 'FUTURE')
+        logger.info(f"Created account object for account ID: {self.account_id}")
+        
+        # 注册回调
         self.xt_trader.register_callback(self)
+        logger.info("Registered callback")
+        
+        # 启动交易线程
         self.xt_trader.start()
+        logger.info("Started trading thread")
+        
+        # 建立交易连接，返回0表示连接成功
         connect_result = self.xt_trader.connect()
-        print(f"Connection result: {connect_result}")
+        logger.info(f"Connection result: {connect_result}")
+        if connect_result != 0:
+            logger.error("Failed to establish trading connection")
+            return False
+        
+        # 对交易回调进行订阅，订阅后可以收到交易主推，返回0表示订阅成功
         subscribe_result = self.xt_trader.subscribe(self.account)
-        print(f"Subscribe result: {subscribe_result}")
+        logger.info(f"Subscribe result: {subscribe_result}")
+        if subscribe_result != 0:
+            logger.error("Failed to subscribe to trading callbacks")
+            return False
+        
+        # 订阅行情数据
+        self.subscribe_market_data()
+        
+        logger.info("LLMQMTFuturesStrategy started successfully")
+        return True
 
+    def subscribe_market_data(self):
+        """订阅实时行情数据"""
+        start_time_str = self.start_time.strftime("%Y%m%d%H%M%S")
+        logger.info(f"Attempting to subscribe to data from: {start_time_str}")
+        
+        try:
+            xtdata.subscribe_quote(self.symbol, period='1m', start_time=start_time_str, callback=self.on_bar_data)
+            logger.info(f"Subscribed to 1-minute bar data for {self.symbol} starting from {start_time_str}")
+        except Exception as e:
+            logger.error(f"Error subscribing to market data: {e}")
+
+    def on_bar_data(self, data):
+        """处理实时行情数据的回调函数"""
+        if self.symbol in data:
+            bar_data = data[self.symbol][0]
+            logger.debug(f"Received raw bar data: {bar_data}")
+            try:
+                current_time = self.parse_timestamp(bar_data['time'])
+                
+                # 更新当前bar数据
+                self.current_bar_data = pd.Series({
+                    'datetime': current_time,
+                    'open': bar_data['open'],
+                    'high': bar_data['high'],
+                    'low': bar_data['low'],
+                    'close': bar_data['close'],
+                    'volume': bar_data['volume'],
+                    'amount': bar_data['amount'],
+                    'hold': bar_data['openInterest']
+                })
+
+                # 只在新的一分钟开始时处理数据
+                if self.last_processed_time is None or current_time.minute != self.last_processed_time.minute:
+                    logger.info(f"Processing new bar data for time: {current_time}")
+                    if current_time >= self.start_time:
+                        self.process_bar(self.current_bar_data)
+                        self.last_processed_time = current_time
+                    else:
+                        logger.info(f"Skipping bar data before start time: {current_time}")
+                else:
+                    logger.debug(f"Updating current bar data for time: {current_time}")
+            except Exception as e:
+                logger.error(f"Error processing bar: {str(e)}")
+                logger.error(f"Problematic bar data: {bar_data}")
+        else:
+            logger.warning(f"Received data does not contain information for {self.symbol}")
+
+    def parse_timestamp(self, timestamp):
+        """解析时间戳"""
+        logger.debug(f"Attempting to parse timestamp: {timestamp}")
+        try:
+            # 尝试多种可能的时间戳格式
+            if isinstance(timestamp, (int, float)):
+                # 如果时间戳是以毫秒为单位
+                if timestamp > 1e12:
+                    return datetime.fromtimestamp(timestamp / 1000, tz=beijing_tz)
+                # 如果时间戳是以秒为单位
+                else:
+                    return datetime.fromtimestamp(timestamp, tz=beijing_tz)
+            elif isinstance(timestamp, str):
+                # 尝试使用dateutil解析字符串格式的时间戳
+                return parser.parse(timestamp).astimezone(beijing_tz)
+            else:
+                raise ValueError(f"Unexpected timestamp type: {type(timestamp)}")
+        except Exception as e:
+            logger.error(f"Error parsing timestamp {timestamp}: {str(e)}")
+            # 如果所有方法都失败，返回当前时间作为后备选项
+            logger.warning("Using current time as fallback")
+            return datetime.now(beijing_tz)
+
+    def is_new_minute(self, current_time):
+        """检查是否是新的一分钟"""
+        if self.last_processed_minute is None or current_time.minute != self.last_processed_minute.minute:
+            self.last_processed_minute = current_time
+            return True
+        return False
+
+
+    def process_bar(self, bar_data):
+        """处理单个 bar 的数据"""
+        if not self.is_trading_time(bar_data['datetime']):
+            logger.info(f"Not trading time: {bar_data['datetime']}")
+            return
+
+        logger.info(f"Processing bar data: {bar_data}")
+        news = self.get_latest_news()
+        trade_instruction, quantity, next_msg = self.llm_dealer.process_bar(bar_data, news)
+
+        logger.info(f"LLM decision: {trade_instruction}, quantity: {quantity}")
+
+        if trade_instruction != 'hold':
+            self.execute_trade(trade_instruction, quantity, bar_data['close'])
+
+        self.last_trade_time = bar_data['datetime']
+        self.last_msg = next_msg
+
+    def is_trading_time(self, current_time):
+        # 调整为考虑日期的版本
+        current_hour = current_time.hour
+        current_minute = current_time.minute
+        
+        # 日盘交易时间：9:00-15:00
+        if 9 <= current_hour < 15:
+            return True
+        
+        # 夜盘交易时间：21:00-次日2:30
+        if 21 <= current_hour <= 23:
+            return True
+        if 0 <= current_hour < 2:
+            return True
+        if current_hour == 2 and current_minute <= 30:
+            return True
+        
+        return False
+
+    # Callback methods
     def on_disconnected(self):
-        print("Connection lost")
+        logger.warning('连接断开回调')
 
     def on_stock_order(self, order):
-        print(f"Order callback: {order.stock_code}, {order.order_status}, {order.order_sysid}")
+        logger.info(f'委托回调 投资备注 {order.order_remark}')
 
     def on_stock_trade(self, trade):
-        print(f"Trade callback: {trade.account_id}, {trade.stock_code}, {trade.order_id}")
-        # Update positions based on the trade
+        logger.info(f'成交回调 {trade.order_remark}, 委托方向(48买 49卖) {trade.offset_flag} 成交价格 {trade.traded_price} 成交数量 {trade.traded_volume}')
+        self.update_positions(trade)
+
+    def on_order_error(self, order_error):
+        logger.error(f"委托报错回调 {order_error.order_remark} {order_error.error_msg}")
+
+    def on_cancel_error(self, cancel_error):
+        logger.error(f"撤单错误 {cancel_error}")
+
+    def on_order_stock_async_response(self, response):
+        logger.info(f"异步委托回调 投资备注: {response.order_remark}")
+
+    def on_cancel_order_stock_async_response(self, response):
+        logger.info(f"异步撤单回调 {response}")
+
+    def on_account_status(self, status):
+        logger.info(f"账户状态更新: {status}")
+
+    def update_positions(self, trade):
         if trade.order_type == xtconstant.FUTURE_OPEN_LONG:
             self.long_position_today += trade.traded_volume
         elif trade.order_type == xtconstant.FUTURE_CLOSE_LONG_TODAY:
@@ -55,35 +263,7 @@ class LLMQMTFuturesStrategy(XtQuantTraderCallback):
             self.short_position_today -= trade.traded_volume
         elif trade.order_type == xtconstant.FUTURE_CLOSE_SHORT_HISTORY:
             self.short_position_history -= trade.traded_volume
-
-    def on_order_error(self, order_error):
-        print(f"Order error: {order_error.order_id}, {order_error.error_id}, {order_error.error_msg}")
-
-    def on_cancel_error(self, cancel_error):
-        print(f"Cancel error: {cancel_error.order_id}, {cancel_error.error_id}, {cancel_error.error_msg}")
-
-    def on_order_stock_async_response(self, response):
-        print(f"Async order response: {response.account_id}, {response.order_id}, {response.seq}")
-
-    def on_account_status(self, status):
-        print(f"Account status: {status.account_id}, {status.account_type}, {status.status}")
-
-    def get_current_bar_data(self):
-        end_time = datetime.now()
-        start_time = end_time - timedelta(minutes=1)
-        df = xtdata.get_local_data(self.symbol, start_time, end_time, period='1m')
-        if df.empty:
-            return None
-        latest_bar = df.iloc[-1]
-        return pd.Series({
-            'datetime': pd.to_datetime(latest_bar.time),
-            'open': latest_bar.open,
-            'high': latest_bar.high,
-            'low': latest_bar.low,
-            'close': latest_bar.close,
-            'volume': latest_bar.volume,
-            'hold': latest_bar.position  # Assuming 'position' represents open interest
-        })
+        logger.info(f"Updated positions: Long Today {self.long_position_today}, Long History {self.long_position_history}, Short Today {self.short_position_today}, Short History {self.short_position_history}")
 
     def get_latest_news(self):
         news_df = self.data_provider.get_futures_news(self.symbol, page_num=0, page_size=1)
@@ -92,6 +272,7 @@ class LLMQMTFuturesStrategy(XtQuantTraderCallback):
         return ""
 
     def execute_trade(self, instruction, quantity, price):
+        logger.info(f"Executing trade: {instruction}, quantity: {quantity}, price: {price}")
         if instruction == 'buy':
             order_id = self.xt_trader.order_stock(self.account, self.symbol, xtconstant.FUTURE_OPEN_LONG, 
                                                   quantity, xtconstant.FIX_PRICE, price, 'LLM_strategy', 'LLM_buy')
@@ -119,33 +300,13 @@ class LLMQMTFuturesStrategy(XtQuantTraderCallback):
                 self.xt_trader.order_stock(self.account, self.symbol, xtconstant.FUTURE_CLOSE_SHORT_HISTORY, 
                                            history_quantity, xtconstant.FIX_PRICE, price, 'LLM_strategy', 'LLM_cover_history')
         else:
-            print(f"Unknown instruction: {instruction}")
+            logger.warning(f"Unknown instruction: {instruction}")
 
     def run_strategy(self):
-        while True:
-            current_time = datetime.now()
-            
-            if not self.is_trading_time(current_time):
-                continue
+        """运行策略"""
+        logger.info("Strategy is now running. Waiting for market data...")
+        self.xt_trader.run_forever()
 
-            bar_data = self.get_current_bar_data()
-            if bar_data is None:
-                continue
-
-            news = self.get_latest_news()
-
-            trade_instruction, quantity, next_msg = self.llm_dealer.process_bar(bar_data, news)
-
-            if trade_instruction != 'hold':
-                self.execute_trade(trade_instruction, quantity, bar_data['close'])
-
-            self.last_trade_time = current_time
-            self.last_msg = next_msg
-
-    def is_trading_time(self, current_time):
-        # Implement logic to check if it's trading time
-        # This is a simplified version, you should adjust it based on actual trading hours
-        return (9 <= current_time.hour < 15) or (21 <= current_time.hour < 23)
 
 if __name__ == "__main__":
     from core.llms.mini_max_client import MiniMaxClient
@@ -156,11 +317,15 @@ if __name__ == "__main__":
         return random.randint(100000, 999999)
 
     session_id = generate_six_digit_random_number()
-    account_id = '101777'
+    account_id = '1001777'
     symbol = 'sc2409.INE'  # Example futures contract code
     llm_client = MiniMaxClient()  # You need to provide an actual LLM client here
-
-    strategy = LLMQMTFuturesStrategy(path, session_id, account_id, symbol, llm_client)
-    strategy.start()
-    strategy.run_strategy()
     
+    # 设置起始时间为当前北京时间前1小时
+    start_time = datetime.now(beijing_tz) - timedelta(hours=1)
+
+    strategy = LLMQMTFuturesStrategy(path, session_id, account_id, symbol, llm_client, start_time)
+    if strategy.start():
+        strategy.run_strategy()
+    else:
+        logger.error("Failed to start strategy")
