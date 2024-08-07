@@ -12,12 +12,14 @@ from ta.trend import MACD
 from ta.volatility import BollingerBands, AverageTrueRange
 from typing import Dict, List, Tuple, Literal, Optional, Union
 import logging
+from logging import FileHandler
 import re
 from datetime import datetime, timedelta, time as dt_time
 from dealer.trade_time import get_trading_end_time
-
+import pytz
 from dealer.futures_provider import MainContractProvider
-
+# 设置北京时区
+beijing_tz = pytz.timezone('Asia/Shanghai')
 
 class PositionType(Enum):
     LONG = 1
@@ -181,16 +183,44 @@ class LLMDealer:
     def _update_news(self, current_datetime):
         if self.is_backtest:
             return False  # 回测模式下不更新新闻
-        news_df = self._get_latest_news()
-        if not news_df.empty:
-            latest_news_time = pd.to_datetime(news_df['publish_time'].iloc[0])
+
+        try:
+            news_df = self._get_latest_news()
+            if news_df.empty:
+                self.logger.info("No new news available")
+                return False
+
+            # 安全地解析新闻时间
+            def safe_parse_time(time_str):
+                try:
+                    # 假设时间戳是毫秒级的
+                    return pd.to_datetime(int(time_str) / 1000, unit='s', utc=True).tz_convert(beijing_tz)
+                except ValueError:
+                    # 如果失败，尝试直接解析字符串
+                    try:
+                        return pd.to_datetime(time_str).tz_localize(beijing_tz)
+                    except:
+                        self.logger.error(f"Failed to parse news time: {time_str}")
+                        return None
+
+            latest_news_time = safe_parse_time(news_df['publish_time'].iloc[0])
+            
+            if latest_news_time is None:
+                self.logger.warning("Failed to parse latest news time, skipping news update")
+                return False
+
             if self.last_news_time is None or latest_news_time > self.last_news_time:
                 self.last_news_time = latest_news_time
                 new_summary = self._summarize_news(news_df)
                 if new_summary != self.news_summary:
                     self.news_summary = new_summary
+                    self.logger.info(f"Updated news summary: {self.news_summary[:100]}...")
                     return True
-        return False
+
+            return False
+        except Exception as e:
+            self.logger.error(f"Error in _update_news: {str(e)}", exc_info=True)
+            return False
        
     def _is_trading_time(self, dt: datetime) -> bool:
         t = dt.time()
@@ -644,15 +674,28 @@ class LLMDealer:
 
     def _get_today_bar_index(self, timestamp: pd.Timestamp) -> int:
         """
-        计算当前的 bar index，基于今日的分钟 bar 数量
+        Calculate the current bar index based on today's minute bars
         """
         if self.today_minute_bars.empty:
             return 0
         
         try:
-            # 确保 datetime 列是 datetime 类型
-            self.today_minute_bars['datetime'] = pd.to_datetime(self.today_minute_bars['datetime'])
-            today_bars = self.today_minute_bars[self.today_minute_bars['datetime'].dt.date == timestamp.date()]
+            # Convert 'datetime' column to datetime type if it's not already
+            if not pd.api.types.is_datetime64_any_dtype(self.today_minute_bars['datetime']):
+                self.today_minute_bars['datetime'] = pd.to_datetime(self.today_minute_bars['datetime'], utc=True)
+            
+            # Now check if datetimes are timezone-aware
+            if self.today_minute_bars['datetime'].dt.tz is None:
+                # If not timezone-aware, assume they're in local time and make them timezone-aware
+                self.today_minute_bars['datetime'] = self.today_minute_bars['datetime'].dt.tz_localize('Asia/Shanghai')
+            
+            # Convert to UTC
+            self.today_minute_bars['datetime'] = self.today_minute_bars['datetime'].dt.tz_convert('UTC')
+            
+            # Ensure the input timestamp is in UTC
+            utc_timestamp = timestamp.tz_convert('UTC')
+            
+            today_bars = self.today_minute_bars[self.today_minute_bars['datetime'].dt.date == utc_timestamp.date()]
             return len(today_bars)
         except Exception as e:
             self.logger.error(f"Error in _get_today_bar_index: {str(e)}", exc_info=True)
@@ -683,19 +726,19 @@ class LLMDealer:
 
             # Create or get the file handler for the current date
             current_date = datetime.now().strftime('%Y%m%d')
-            file_handler = next((h for h in self.logger.handlers if isinstance(h, self.logger.FileHandler) and h.baseFilename.endswith(f'{current_date}.log')), None)
+            file_handler = next((h for h in self.logger.handlers if isinstance(h, FileHandler) and h.baseFilename.endswith(f'{current_date}.log')), None)
             
             if not file_handler:
                 # If the file handler for the current date doesn't exist, create a new one
                 file_path = f'./output/log{current_date}.log'
-                file_handler = self.logger.FileHandler(file_path)
-                file_handler.setLevel(self.logger.DEBUG)
-                file_handler.setFormatter(self.logger.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+                file_handler = FileHandler(file_path)
+                file_handler.setLevel(logging.DEBUG)
+                file_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
                 self.logger.addHandler(file_handler)
 
                 # Remove old file handlers
                 for handler in self.logger.handlers[:]:
-                    if isinstance(handler, self.logger.FileHandler) and not handler.baseFilename.endswith(f'{current_date}.log'):
+                    if isinstance(handler, FileHandler) and not handler.baseFilename.endswith(f'{current_date}.log'):
                         self.logger.removeHandler(handler)
                         handler.close()
 
@@ -726,15 +769,62 @@ class LLMDealer:
 
         except Exception as e:
             self.logger.error(f"Error in _log_bar_info: {str(e)}", exc_info=True)
-    
+
+    def parse_timestamp(self, timestamp):
+        """解析时间戳"""
+        self.logger.debug(f"Attempting to parse timestamp: {timestamp}")
+        try:
+            # 尝试多种可能的时间戳格式
+            if isinstance(timestamp, (int, float)):
+                # 如果时间戳是以毫秒为单位
+                if timestamp > 1e12:
+                    # 检查时间戳是否超出合理范围（2262年之后）
+                    if timestamp > 9999999999999:
+                        self.logger.warning(f"Abnormally large timestamp detected: {timestamp}")
+                        # 尝试将其解释为纳秒级时间戳
+                        try:
+                            return pd.Timestamp(timestamp, unit='ns').tz_localize(beijing_tz)
+                        except Exception:
+                            self.logger.error(f"Failed to parse abnormally large timestamp: {timestamp}")
+                            return datetime.now(beijing_tz)
+                    return datetime.fromtimestamp(timestamp / 1000, tz=beijing_tz)
+                # 如果时间戳是以秒为单位
+                else:
+                    return datetime.fromtimestamp(timestamp, tz=beijing_tz)
+            elif isinstance(timestamp, str):
+                # 尝试使用dateutil解析字符串格式的时间戳
+                return parser.parse(timestamp).astimezone(beijing_tz)
+            elif isinstance(timestamp, pd.Timestamp):
+                return timestamp.tz_localize(beijing_tz) if timestamp.tz is None else timestamp.tz_convert(beijing_tz)
+            elif isinstance(timestamp, datetime):
+                return timestamp.astimezone(beijing_tz) if timestamp.tzinfo else beijing_tz.localize(timestamp)
+            else:
+                raise ValueError(f"Unexpected timestamp type: {type(timestamp)}")
+        except Exception as e:
+            self.logger.error(f"Error parsing timestamp {timestamp}: {str(e)}")
+            # 如果所有方法都失败，返回当前时间作为后备选项
+            self.logger.warning("Using current time as fallback")
+            return datetime.now(beijing_tz)
+
     def process_bar(self, bar: pd.Series, news: str = "") -> Tuple[str, Union[int, str], str]:
         try:
-            bar['datetime'] = pd.to_datetime(bar['datetime'])
+            # 确保使用正确的时间戳键
+            time_key = 'time' if 'time' in bar else 'datetime'
+            bar['datetime'] = self.parse_timestamp(bar[time_key])
             bar_date = bar['datetime'].date()
 
             if self.current_date != bar_date:
                 self.current_date = bar_date
                 self.today_minute_bars = self._get_today_data(bar_date)
+                # Ensure the datetime column is in datetime format and timezone-aware
+                self.today_minute_bars['datetime'] = pd.to_datetime(self.today_minute_bars['datetime'], utc=True)
+                
+                # If the datetimes are not timezone-aware, assume they're in local time and make them timezone-aware
+                if self.today_minute_bars['datetime'].dt.tz is None:
+                    self.today_minute_bars['datetime'] = self.today_minute_bars['datetime'].dt.tz_localize('Asia/Shanghai')
+                
+                # Convert to UTC
+                self.today_minute_bars['datetime'] = self.today_minute_bars['datetime'].dt.tz_convert('UTC')
                 self.position = 0
                 self.last_trade_date = bar_date
                 
@@ -760,5 +850,6 @@ class LLMDealer:
             self.last_msg = next_msg
             return trade_instruction, quantity, next_msg
         except Exception as e:
-            self.logger.error(f"Error processing bar: {str(e)}")
+            self.logger.error(f"Error processing bar: {str(e)}", exc_info=True)
+            self.logger.error(f"Problematic bar data: {bar}")
             return "hold", 0, ""

@@ -164,6 +164,15 @@ class LLMQMTFuturesStrategy(XtQuantTraderCallback):
             if isinstance(timestamp, (int, float)):
                 # 如果时间戳是以毫秒为单位
                 if timestamp > 1e12:
+                    # 检查时间戳是否超出合理范围（2262年之后）
+                    if timestamp > 9999999999999:
+                        logger.warning(f"Abnormally large timestamp detected: {timestamp}")
+                        # 尝试将其解释为纳秒级时间戳
+                        try:
+                            return pd.Timestamp(timestamp, unit='ns').tz_localize(beijing_tz)
+                        except Exception:
+                            logger.error(f"Failed to parse abnormally large timestamp: {timestamp}")
+                            return datetime.now(beijing_tz)
                     return datetime.fromtimestamp(timestamp / 1000, tz=beijing_tz)
                 # 如果时间戳是以秒为单位
                 else:
@@ -171,6 +180,10 @@ class LLMQMTFuturesStrategy(XtQuantTraderCallback):
             elif isinstance(timestamp, str):
                 # 尝试使用dateutil解析字符串格式的时间戳
                 return parser.parse(timestamp).astimezone(beijing_tz)
+            elif isinstance(timestamp, pd.Timestamp):
+                return timestamp.tz_localize(beijing_tz) if timestamp.tz is None else timestamp.tz_convert(beijing_tz)
+            elif isinstance(timestamp, datetime):
+                return timestamp.astimezone(beijing_tz) if timestamp.tzinfo else beijing_tz.localize(timestamp)
             else:
                 raise ValueError(f"Unexpected timestamp type: {type(timestamp)}")
         except Exception as e:
