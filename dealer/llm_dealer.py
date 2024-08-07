@@ -212,16 +212,28 @@ class LLMDealer:
     def _get_today_data(self, date: datetime.date) -> pd.DataFrame:
         self.logger.info(f"Fetching data for date: {date}")
 
-        # 获取当天的分钟线数据
-        today_data = self.data_provider.get_bar_data(self.symbol, '1', date.strftime('%Y-%m-%d'))
+        if self.is_backtest:
+            today_data = self.data_provider.get_bar_data(self.symbol, '1', date.strftime('%Y-%m-%d'))
+        else:
+            today_data = self.data_provider.get_akbar(self.symbol, '1m')
+            today_data = today_data[today_data.index.date == date]
+            today_data = today_data.reset_index()
+
         self.logger.info(f"Raw data fetched: {len(today_data)} rows")
 
         if today_data.empty:
             self.logger.warning(f"No data returned from data provider for date {date}")
             return pd.DataFrame()
 
-        # 筛选出交易日期与输入日期一致的数据
-        filtered_data = today_data[today_data['trading_date'] == date]
+        # Ensure column names are consistent
+        today_data = today_data.rename(columns={
+            'open_interest': 'hold'
+        })
+
+        if self.is_backtest:
+            filtered_data = today_data[today_data['trading_date'] == date]
+        else:
+            filtered_data = today_data[today_data['datetime'].dt.date == date]
 
         if filtered_data.empty:
             self.logger.warning(f"No data found for date {date} after filtering.")
@@ -317,28 +329,41 @@ class LLMDealer:
         
     def _initialize_history(self, period: Literal['1', '5', '15', '30', '60', 'D']) -> pd.DataFrame:
         try:
-            df = self.data_provider.get_bar_data(self.symbol, period, self.backtest_date)
+            frequency_map = {'1': '1m', '5': '5m', '15': '15m', '30': '30m', '60': '60m', 'D': 'D'}
+            frequency = frequency_map[period]
             
-            # 检查数据是否为空
+            if self.is_backtest:
+                df = self.data_provider.get_bar_data(self.symbol, period, self.backtest_date)
+            else:
+                df = self.data_provider.get_akbar(self.symbol, frequency)
+            
             if df.empty:
                 raise ValueError(f"No data returned for period {period}")
             
-            # 统一列名
-            if 'date' in df.columns:
-                df = df.rename(columns={'date': 'datetime'})
+            df = df.reset_index()
             
-            # 确保 'datetime' 列是 datetime 类型
+            # Rename columns to match the expected format
+            df = df.rename(columns={
+                'datetime': 'datetime',
+                'open': 'open',
+                'high': 'high',
+                'low': 'low',
+                'close': 'close',
+                'volume': 'volume',
+                'open_interest': 'hold'
+            })
+            
+            # Ensure 'datetime' column is datetime type
             df['datetime'] = pd.to_datetime(df['datetime'])
             
-            # 选择需要的列
-            columns_to_keep = ['datetime', 'open', 'close', 'high', 'low', 'volume', 'hold']
+            # Select and order the required columns
+            columns_to_keep = ['datetime', 'open', 'high', 'low', 'close', 'volume', 'hold']
             df = df[columns_to_keep]
             
             return self._limit_history(df, period)
         except Exception as e:
             logging.error(f"Error initializing history for period {period}: {str(e)}")
-            # 返回一个空的 DataFrame，包含所有必要的列
-            return pd.DataFrame(columns=['datetime', 'open', 'close', 'high', 'low', 'volume', 'hold'])
+            return pd.DataFrame(columns=['datetime', 'open', 'high', 'low', 'close', 'volume', 'hold'])
 
     def _limit_history(self, df: pd.DataFrame, period: str) -> pd.DataFrame:
         """根据时间周期限制历史数据的长度"""
@@ -723,22 +748,18 @@ class LLMDealer:
                 self.last_trade_date = bar_date
                 
                 if not self.is_backtest:
-                    # Reset news data for the new day in non-backtest mode
                     self.last_news_time = None
                     self.news_summary = ""
 
             if not self._is_trading_time(bar['datetime']):
                 return "hold", 0, ""
 
-            # Update today_minute_bars
             self.today_minute_bars = pd.concat([self.today_minute_bars, bar.to_frame().T], ignore_index=True)
 
-            # Check for news updates in non-backtest mode
             news_updated = False
             if not self.is_backtest:
                 news_updated = self._update_news(bar['datetime'])
 
-            # Prepare LLM input
             llm_input = self._prepare_llm_input(bar, self.news_summary if (not self.is_backtest and (news_updated or len(self.today_minute_bars) == 1)) else "")
             
             llm_response = self.llm_client.one_chat(llm_input)
