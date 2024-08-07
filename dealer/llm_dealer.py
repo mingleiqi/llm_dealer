@@ -793,6 +793,7 @@ class LLMDealer:
                     return datetime.fromtimestamp(timestamp, tz=beijing_tz)
             elif isinstance(timestamp, str):
                 # 尝试使用dateutil解析字符串格式的时间戳
+                import dateutil.parser as parser
                 return parser.parse(timestamp).astimezone(beijing_tz)
             elif isinstance(timestamp, pd.Timestamp):
                 return timestamp.tz_localize(beijing_tz) if timestamp.tz is None else timestamp.tz_convert(beijing_tz)
