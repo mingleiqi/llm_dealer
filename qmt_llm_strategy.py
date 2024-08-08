@@ -44,7 +44,7 @@ logger = logging.getLogger(__name__)
 beijing_tz = pytz.timezone('Asia/Shanghai')
 
 class LLMQMTFuturesStrategy(XtQuantTraderCallback):
-    def __init__(self, path, session_id, account_id, symbol, llm_client, start_time=None,use_market_order=False, price_tolerance=0.2):
+    def __init__(self, path, session_id, account_id, symbol, llm_client, trade_rules = "", start_time=None,use_market_order=False, price_tolerance=0.2):
         self.path = path
         self.session_id = session_id
         self.account_id = account_id
@@ -52,7 +52,7 @@ class LLMQMTFuturesStrategy(XtQuantTraderCallback):
         match = re.match(r"([a-zA-Z]+)\d{4}\.[a-zA-Z]+", symbol)
         self.symbol_name = match.group(1).upper() if match else symbol
         self.data_provider = MainContractProvider()
-        self.llm_dealer = LLMDealer(llm_client, self.symbol_name, self.data_provider)
+        self.llm_dealer = LLMDealer(llm_client, self.symbol_name, self.data_provider,trade_rules)
         self.long_position_today = 0
         self.long_position_history = 0
         self.short_position_today = 0
@@ -396,14 +396,27 @@ if __name__ == "__main__":
     if not symbol:
         symbol = 'sc2409.INE'
     session_id = generate_six_digit_random_number()
+
+    trade_rules = get_key('trade_rules')
+    if not trade_rule:
+        trade_rules = ""
+    
+    llm_api = get_key('llm_api')
+    if not llm_api:
+        llm_api = "MiniMaxClient"
+
+    from core.llms.llm_factory import LLMFactory
+    factory = LLMFactory()
+
     account_id = account_id
-      # Example futures contract code
-    llm_client = MiniMaxClient()  # You need to provide an actual LLM client here
+    # Example futures contract code
+    llm_client = factory.get_instance(llm_api) 
     
     # 设置起始时间为当前北京时间前1小时
     start_time = datetime.now(beijing_tz) - timedelta(hours=1)
 
-    strategy = LLMQMTFuturesStrategy(path, session_id, account_id, symbol, llm_client, start_time)
+    strategy = LLMQMTFuturesStrategy(path, session_id, account_id, symbol, llm_client, trade_rules , start_time)
+    
     if strategy.start():
         strategy.run_strategy()
     else:

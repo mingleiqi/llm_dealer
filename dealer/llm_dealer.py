@@ -97,11 +97,12 @@ class TradePositionManager:
 
 
 class LLMDealer:
-    def __init__(self, llm_client, symbol: str, data_provider: MainContractProvider,
+    def __init__(self, llm_client, symbol: str,data_provider: MainContractProvider,trade_rules:str="" ,
                  max_daily_bars: int = 60, max_hourly_bars: int = 30, max_minute_bars: int = 240,
                  backtest_date: Optional[str] = None, compact_mode: bool = False,
                  max_position: int = 1):
         self._setup_logging()
+        self.trade_rules = trade_rules
         self.symbol = symbol
         self.night_closing_time = self._get_night_closing_time()
         self.backtest_date = backtest_date
@@ -509,10 +510,13 @@ class LLMDealer:
             5. 这条消息只会出现以此，如果有值得记录的信息，需要保留在 next_message 中
             """
 
+
         input_template = f"""
-        你时候一位经验老道的期货交易员，熟悉期货规律，掌握交易中获利的技巧。不放弃每个机会，也随时警惕风险。你认真思考，审视数据，做出交易决策。
+        你是一位经验老道的期货交易员，熟悉期货规律，掌握交易中获利的技巧。不放弃每个机会，也随时警惕风险。你认真思考，审视数据，做出交易决策。
         今天执行的日内交易策略。所有开仓都需要在当天收盘前平仓，不留过夜仓位。你看到数据的周期是：1分钟
         注意：历史信息不会保留，如果有留给后续使用的信息，需要记录在 next_message 中。
+        
+        {f"交易中注意遵循以下规则:{self.trade_rules}" if self.trade_rules else ""}
 
         上一次的消息: {self.last_msg}
         当前 bar index: {len(self.today_minute_bars) - 1}
@@ -538,7 +542,7 @@ class LLMDealer:
         技术指标:
         {self._format_indicators(latest_indicators)}
 
-         {news_section}
+        {news_section}
 
         当前持仓状态: {position_description}
         最大持仓: {self.max_position} 手
@@ -558,11 +562,14 @@ class LLMDealer:
            - 卖出平多：'sell 数量'（例如：'sell 2' 或 'sell all'）
            - 买入平空：'cover 数量'（例如：'cover 2' 或 'cover all'）
         5. 当前持仓已经达到最大值或最小值时，请勿继续开仓。
+        6. 请提供交易理由和交易计划（包括止损区间和目标价格预测）。
 
         请根据以上信息，给出交易指令或选择不交易（hold），并提供下一次需要的消息。
         请以JSON格式输出，包含以下字段：
         - trade_instruction: 交易指令（字符串，例如 "buy 2", "sell all", "short 1", "cover all" 或 "hold"）
         - next_message: 下一次需要的消息（字符串）
+        - trade_reason: 此刻交易的理由（字符串）
+        - trade_plan: 交易计划，包括止损区间和目标价格预测（字符串）
 
         请确保输出的JSON格式正确，并用```json 和 ``` 包裹。
         """
@@ -575,7 +582,7 @@ class LLMDealer:
             'hourly': self.hourly_history.to_string(index=False) if not self.hourly_history.empty else "No hourly data available",
         }
 
-    def _parse_llm_output(self, llm_response: str) -> Tuple[str, str]:
+    def _parse_llm_output(self, llm_response: str) -> Tuple[str, Union[int, str], str, str, str]:
         """解析 LLM 的 JSON 输出"""
         try:
             # 提取 JSON 内容
@@ -586,11 +593,16 @@ class LLMDealer:
             json_str = json_match.group(1)
             data = json.loads(json_str)
             
-            if 'trade_instruction' not in data or 'next_message' not in data:
-                raise ValueError("Invalid JSON structure")
+            # 使用 get 方法获取字段值，如果字段不存在则返回默认值
+            trade_instruction = data.get('trade_instruction', 'hold').lower()
+            next_msg = data.get('next_message', '')
+            trade_reason = data.get('trade_reason', '')
+            trade_plan = data.get('trade_plan', '')
             
-            trade_instruction = data['trade_instruction']
-            next_msg = data['next_message']
+            # 如果交易指令是 'hold'，我们不需要交易理由和计划
+            if trade_instruction == 'hold':
+                trade_reason = ''
+                trade_plan = ''
             
             # 解析交易指令和数量
             instruction_parts = trade_instruction.split()
@@ -598,7 +610,8 @@ class LLMDealer:
             quantity = instruction_parts[1] if len(instruction_parts) > 1 else '1'
             
             if action not in ['buy', 'sell', 'short', 'cover', 'hold']:
-                raise ValueError(f"Invalid trade instruction: {action}")
+                self.logger.warning(f"Invalid trade instruction: {action}. Defaulting to 'hold'.")
+                return "hold", 1, next_msg, "", ""
             
             if quantity.lower() == 'all':
                 quantity = 'all'
@@ -608,17 +621,22 @@ class LLMDealer:
                 except ValueError:
                     quantity = 1  # 默认数量为1
             
-            return action, quantity, next_msg
+            return action, quantity, next_msg, trade_reason, trade_plan
+        except json.JSONDecodeError as e:
+            self.logger.error(f"JSON parsing error: {e}")
+            return "hold", 1, "", "JSON 解析错误", ""
         except Exception as e:
             self.logger.error(f"Error parsing LLM output: {e}")
-            return "hold", 1, ""
+            return "hold", 1, "", "解析错误", ""
 
-    def _execute_trade(self, trade_instruction: str, quantity: Union[int, str], bar: pd.Series):
+    def _execute_trade(self, trade_instruction: str, quantity: Union[int, str], bar: pd.Series, trade_reason: str, trade_plan: str):
         current_datetime = bar['datetime']
         current_date = current_datetime.date()
         current_price = bar['close']
 
         self.logger.info(f"尝试执行交易: 指令={trade_instruction}, 数量={quantity}, 价格={current_price}")
+        self.logger.info(f"交易理由: {trade_reason}")
+        self.logger.info(f"交易计划: {trade_plan}")
 
         if self.last_trade_date != current_date:
             self._close_all_positions(current_price, current_datetime)
@@ -639,7 +657,7 @@ class LLMDealer:
             max_buy = self.max_position - current_position
             actual_quantity = min(qty, max_buy)
             self.logger.info(f"尝试买入 {actual_quantity} 手")
-            self.position_manager.open_position(current_price, actual_quantity, True, current_datetime)
+            self.position_manager.open_position(current_price, actual_quantity, True, current_datetime, trade_plan)
         elif action == "sell":
             actual_quantity = self.position_manager.close_positions(current_price, qty, True, current_datetime)
             self.logger.info(f"尝试卖出 {actual_quantity} 手")
@@ -647,7 +665,7 @@ class LLMDealer:
             max_short = self.max_position + current_position
             actual_quantity = min(qty, max_short)
             self.logger.info(f"尝试做空 {actual_quantity} 手")
-            self.position_manager.open_position(current_price, actual_quantity, False, current_datetime)
+            self.position_manager.open_position(current_price, actual_quantity, False, current_datetime, trade_plan)
         elif action == "cover":
             actual_quantity = self.position_manager.close_positions(current_price, qty, False, current_datetime)
             self.logger.info(f"尝试买入平空 {actual_quantity} 手")
@@ -771,6 +789,8 @@ class LLMDealer:
             成交量: {bar['volume']}, 持仓量: {bar.get('open_interest', bar.get('hold', 'N/A'))}
             新闻: {news[:200] + '...' if news else '无新闻数据'}
             交易指令: {trade_instruction}
+            交易理由: {trade_reason}
+            交易计划: {trade_plan}
             当前持仓: {self.position_manager.get_current_position()}
             盈亏情况:
             {self.position_manager.calculate_profits(bar['close'])}
@@ -782,7 +802,7 @@ class LLMDealer:
 
             # Log to console only if there's a trade instruction (excluding 'hold')
             if trade_instruction.lower() != 'hold':
-                console_msg = f"时间: {pd.to_datetime(bar['datetime'])}, 价格: {bar['close']:.2f}, 交易指令: {trade_instruction}, 当前持仓: {self.position_manager.get_current_position()}"
+                console_msg = f"时间: {pd.to_datetime(bar['datetime'])}, 价格: {bar['close']:.2f}, 交易指令: {trade_instruction}, 交易理由: {trade_reason[:50]}..., 当前持仓: {self.position_manager.get_current_position()}"
                 self.logger.info(console_msg)
 
         except Exception as e:
@@ -863,12 +883,12 @@ class LLMDealer:
             llm_input = self._prepare_llm_input(bar, self.news_summary if (not self.is_backtest and (news_updated or len(self.today_minute_bars) == 1)) else "")
             
             llm_response = self.llm_client.one_chat(llm_input)
-            trade_instruction, quantity, next_msg = self._parse_llm_output(llm_response)
-            self._execute_trade(trade_instruction, quantity, bar)
-            self._log_bar_info(bar, self.news_summary if news_updated else "", f"{trade_instruction} {quantity}")
+            trade_instruction, quantity, next_msg, trade_reason, trade_plan = self._parse_llm_output(llm_response)
+            self._execute_trade(trade_instruction, quantity, bar, trade_reason, trade_plan)
+            self._log_bar_info(bar, self.news_summary if news_updated else "", f"{trade_instruction} {quantity}", trade_reason, trade_plan)
             self.last_msg = next_msg
-            return trade_instruction, quantity, next_msg
+            return trade_instruction, quantity, next_msg, trade_reason, trade_plan
         except Exception as e:
             self.logger.error(f"Error processing bar: {str(e)}", exc_info=True)
             self.logger.error(f"Problematic bar data: {bar}")
-            return "hold", 0, ""
+            return "hold", 0, "", "处理错误", "无交易计划"

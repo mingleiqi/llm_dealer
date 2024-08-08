@@ -1,11 +1,13 @@
 [Default]
-xt_key =  
+llm_api = MiniMaxClient
+xt_key = 
 rq_key = 
 ts_key = 
 rq_user = 
 rq_pwd = 
 account_id = 
-symbol = 
+symbol = sc2409.INE
 minimax_api_key = 
+trade_rules = 把握趋势，控制回撤
 [GitHub]
 token = 
