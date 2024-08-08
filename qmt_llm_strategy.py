@@ -329,9 +329,16 @@ if __name__ == "__main__":
     def generate_six_digit_random_number():
         return random.randint(100000, 999999)
 
+    from core.config import get_key
+    account_id=get_key('account_id')
+    if not account_id:
+        exit(1)
+    symbol = get_key('symbol')
+    if not symbol:
+        symbol = 'sc2409.INE'
     session_id = generate_six_digit_random_number()
-    account_id = '1001777'
-    symbol = 'sc2409.INE'  # Example futures contract code
+    account_id = account_id
+      # Example futures contract code
     llm_client = MiniMaxClient()  # You need to provide an actual LLM client here
     
     # 设置起始时间为当前北京时间前1小时

@@ -1,0 +1,11 @@
+[Default]
+xt_key =  
+rq_key = 
+ts_key = 
+rq_user = 
+rq_pwd = 
+account_id = 
+symbol = 
+minimax_api_key = 
+[GitHub]
+token = 
