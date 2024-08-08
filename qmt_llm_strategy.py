@@ -49,7 +49,7 @@ class LLMQMTFuturesStrategy(XtQuantTraderCallback):
         self.session_id = session_id
         self.account_id = account_id
         self.symbol = symbol
-        match = re.match(r"([a-zA-Z]+)\d{4}\.[A-Z]+", symbol)
+        match = re.match(r"([a-zA-Z]+)\d{4}\.[a-zA-Z]+", symbol)
         self.symbol_name = match.group(1).upper() if match else symbol
         self.data_provider = MainContractProvider()
         self.llm_dealer = LLMDealer(llm_client, self.symbol_name, self.data_provider)
@@ -66,7 +66,7 @@ class LLMQMTFuturesStrategy(XtQuantTraderCallback):
         self.current_bar_data = None
         
         # 使用北京时间
-        current_time = datetime.now(beijing_tz)
+        current_time = datetime.now()
         self.start_time = start_time or (current_time - timedelta(hours=1))
         if self.start_time.tzinfo is None:
             self.start_time = beijing_tz.localize(self.start_time)
