@@ -221,9 +221,11 @@ class LLMQMTFuturesStrategy(XtQuantTraderCallback):
 
         logger.info(f"Processing bar data: {bar_data}")
         news = self.get_latest_news()
-        trade_instruction, quantity, next_msg = self.llm_dealer.process_bar(bar_data, news)
+        trade_instruction, quantity, next_msg, trade_reason, trade_plan = self.llm_dealer.process_bar(bar_data, news)
 
         logger.info(f"LLM decision: {trade_instruction}, quantity: {quantity}")
+        logger.info(f"Trade reason: {trade_reason}")
+        logger.info(f"Trade plan: {trade_plan}")
 
         if trade_instruction != 'hold':
             self.execute_trade(trade_instruction, quantity, bar_data['close'])
@@ -416,7 +418,7 @@ if __name__ == "__main__":
     start_time = datetime.now(beijing_tz) - timedelta(hours=1)
 
     strategy = LLMQMTFuturesStrategy(path, session_id, account_id, symbol, llm_client, trade_rules , start_time)
-    
+
     if strategy.start():
         strategy.run_strategy()
     else:
