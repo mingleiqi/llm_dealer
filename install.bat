@@ -7,6 +7,17 @@ set MINICONDA_URL=https://mirror.tuna.tsinghua.edu.cn/anaconda/miniconda/Minicon
 set INSTALLER_PATH=%SCRIPT_DIR%\miniconda_installer.exe
 set ENV_PATH=%SCRIPT_DIR%\env
 
+:: 检查指定的路径是否已安装 Conda
+set CONDA_FOUND=0
+for %%P in (C:\Users\%USERNAME%\miniconda3 c:\app\conda\ d:\app\conda\) do (
+    if exist "%%P\Scripts\conda.exe" (
+        set CONDA_FOUND=1
+        set MINICONDA_PATH=%%P
+        echo Conda is already installed at %MINICONDA_PATH%
+        goto skip_install
+    )
+)
+
 :: 1. 检查 C、D、E 盘剩余空间
 for %%D in (C D E) do (
     set "FREE_SPACE=%%D:"
@@ -24,8 +35,9 @@ for /f "tokens=2,3 delims=[]" %%D in ('set DISK_FREE[') do (
 :: 3. 设置 Miniconda 安装路径
 set MINICONDA_PATH=%MAX_DISK%:\miniconda3
 
-:: 4. 检查 Miniconda 是否已安装
-if not exist "%MINICONDA_PATH%\Scripts\conda.exe" (
+:: 4. 下载并安装 Miniconda (如果未找到)
+:skip_install
+if %CONDA_FOUND%==0 (
     echo Downloading Miniconda...
     powershell -Command "Invoke-WebRequest -Uri '%MINICONDA_URL%' -OutFile '%INSTALLER_PATH%'"
 
@@ -33,8 +45,6 @@ if not exist "%MINICONDA_PATH%\Scripts\conda.exe" (
     start /wait "" "%INSTALLER_PATH%" /InstallationType=JustMe /RegisterPython=0 /AddToPath=0 /S /D="%MINICONDA_PATH%"
 
     del "%INSTALLER_PATH%"
-) else (
-    echo Miniconda is already installed at %MINICONDA_PATH%
 )
 
 :: 5. 创建虚拟环境
