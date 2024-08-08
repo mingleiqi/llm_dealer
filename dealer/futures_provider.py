@@ -166,7 +166,6 @@ class MainContractProvider:
             print(f"An error occurred: {e}")
             return None
 
-
     def get_akbar(self, symbol: str, frequency: str = '1m') -> Optional[pd.DataFrame]:
         """
         获取期货行情数据，首选 AKShare，如果失败则尝试备用数据源
@@ -226,8 +225,6 @@ class MainContractProvider:
                 df[col] = None
 
         return df
-
-
 
     def get_rqbar(self, symbol: str, start_date: str, end_date: str, frequency: str = '1m', adjust_type: str = 'none'):
         if symbol.endswith('0'):

@@ -1308,7 +1308,53 @@ class StockDataProvider:
 
     def stock_info_global(self):
         return ak.stock_info_global_ths()
-    
+
+    def stock_info_global_ths(self):
+        """
+        同花顺财经 20条
+        返回值：
+            名称	类型	描述
+            标题	object	-
+            内容	object	-
+            发布时间	object	-
+            链接	object	-
+        """
+        return ak.stock_info_global_ths()
+
+    def stock_info_global_futu(self):
+        """
+        富途财经 50条
+        返回值：
+            名称	类型	描述
+            标题	object	-
+            内容	object	-
+            发布时间	object	-
+            链接	object	-
+        """
+        return ak.stock_info_global_futu()
+
+    def stock_info_global_sina(self):
+        """
+        新浪财经 20条
+        返回值：
+        名称	类型	描述
+        时间	object	-
+        内容	object	-
+        """
+        return ak.stock_info_global_sina()
+
+    def stock_info_global_em(self):
+        """
+        东方财富 200条
+        返回值：
+            名称	类型	描述
+            标题	object	-
+            摘要	object	-
+            发布时间	object	-
+            链接	object	-
+        """
+        return ak.stock_info_global_em()
+
     def summarize_historical_data(self, symbols: List[str]) -> dict:
         """
         汇总多个股票的历史数据，并生成描述性的字符串。
@@ -1376,3 +1422,5 @@ class StockDataProvider:
             summary_dict[symbol] = description
         
         return summary_dict
+
+
