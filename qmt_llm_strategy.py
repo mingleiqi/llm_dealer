@@ -66,7 +66,7 @@ class LLMQMTFuturesStrategy(XtQuantTraderCallback):
         self.current_bar_data = None
         
         # 使用北京时间
-        current_time = datetime.now()
+        current_time = datetime.now(beijing_tz)
         self.start_time = start_time or (current_time - timedelta(hours=1))
         if self.start_time.tzinfo is None:
             self.start_time = beijing_tz.localize(self.start_time)
