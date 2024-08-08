@@ -95,7 +95,6 @@ class TradePositionManager:
                 details += f"  {i}. 开仓价: {pos.entry_price:.2f}, 开仓时间: {pos.entry_time}\n"
         return details
 
-
 class LLMDealer:
     def __init__(self, llm_client, symbol: str,data_provider: MainContractProvider,trade_rules:str="" ,
                  max_daily_bars: int = 60, max_hourly_bars: int = 30, max_minute_bars: int = 240,
@@ -511,6 +510,7 @@ class LLMDealer:
             """
 
 
+
         input_template = f"""
         你是一位经验老道的期货交易员，熟悉期货规律，掌握交易中获利的技巧。不放弃每个机会，也随时警惕风险。你认真思考，审视数据，做出交易决策。
         今天执行的日内交易策略。所有开仓都需要在当天收盘前平仓，不留过夜仓位。你看到数据的周期是：1分钟
@@ -563,13 +563,14 @@ class LLMDealer:
            - 买入平空：'cover 数量'（例如：'cover 2' 或 'cover all'）
         5. 当前持仓已经达到最大值或最小值时，请勿继续开仓。
         6. 请提供交易理由和交易计划（包括止损区间和目标价格预测）。
+        7. 即使选择持仓不变（hold），也可以根据最新行情修改交易计划。如果行情变化导致预期发生变化，请更新 trade_plan。
 
         请根据以上信息，给出交易指令或选择不交易（hold），并提供下一次需要的消息。
         请以JSON格式输出，包含以下字段：
         - trade_instruction: 交易指令（字符串，例如 "buy 2", "sell all", "short 1", "cover all" 或 "hold"）
         - next_message: 下一次需要的消息（字符串）
         - trade_reason: 此刻交易的理由（字符串）
-        - trade_plan: 交易计划，包括止损区间和目标价格预测（字符串）
+        - trade_plan: 交易计划，包括止损区间和目标价格预测，可以根据最新行情进行修改（字符串）
 
         请确保输出的JSON格式正确，并用```json 和 ``` 包裹。
         """
@@ -599,11 +600,6 @@ class LLMDealer:
             trade_reason = data.get('trade_reason', '')
             trade_plan = data.get('trade_plan', '')
             
-            # 如果交易指令是 'hold'，我们不需要交易理由和计划
-            if trade_instruction == 'hold':
-                trade_reason = ''
-                trade_plan = ''
-            
             # 解析交易指令和数量
             instruction_parts = trade_instruction.split()
             action = instruction_parts[0]
@@ -611,7 +607,7 @@ class LLMDealer:
             
             if action not in ['buy', 'sell', 'short', 'cover', 'hold']:
                 self.logger.warning(f"Invalid trade instruction: {action}. Defaulting to 'hold'.")
-                return "hold", 1, next_msg, "", ""
+                return "hold", 1, next_msg, "", trade_plan
             
             if quantity.lower() == 'all':
                 quantity = 'all'
