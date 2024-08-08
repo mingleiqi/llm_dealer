@@ -145,7 +145,7 @@ class LLMDealer:
         self.logger.setLevel(logging.DEBUG)
 
         # Create a formatter
-        formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+        formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s', encoding='utf-8')
 
         # Create a handler for console output
         console_handler = logging.StreamHandler()
@@ -154,6 +154,17 @@ class LLMDealer:
 
         # Add the console handler to the logger
         self.logger.addHandler(console_handler)
+
+        # Ensure the output directory exists
+        os.makedirs('./output', exist_ok=True)
+
+        # Create a file handler
+        file_handler = logging.FileHandler(f'./output/log_{datetime.now().strftime("%Y%m%d")}.log', encoding='utf-8')
+        file_handler.setLevel(logging.DEBUG)
+        file_handler.setFormatter(formatter)
+
+        # Add the file handler to the logger
+        self.logger.addHandler(file_handler)
 
     def _get_latest_news(self):
         if self.is_backtest:
@@ -607,34 +618,41 @@ class LLMDealer:
         current_date = current_datetime.date()
         current_price = bar['close']
 
+        self.logger.info(f"尝试执行交易: 指令={trade_instruction}, 数量={quantity}, 价格={current_price}")
+
         if self.last_trade_date != current_date:
             self._close_all_positions(current_price, current_datetime)
             self.last_trade_date = current_date
 
         if trade_instruction.lower() == 'hold':
-            self.logger.info("Hold position, no trade executed.")
+            self.logger.info("保持当前仓位，不执行交易。")
             return
 
-        # 修复这里：直接使用传入的 trade_instruction 和 quantity
         action = trade_instruction.lower()
         qty = self.max_position if quantity == 'all' else int(quantity)
 
         current_position = self.position_manager.get_current_position()
 
+        self.logger.info(f"当前仓位: {current_position}, 最大仓位: {self.max_position}")
+
         if action == "buy":
             max_buy = self.max_position - current_position
             actual_quantity = min(qty, max_buy)
+            self.logger.info(f"尝试买入 {actual_quantity} 手")
             self.position_manager.open_position(current_price, actual_quantity, True, current_datetime)
         elif action == "sell":
             actual_quantity = self.position_manager.close_positions(current_price, qty, True, current_datetime)
+            self.logger.info(f"尝试卖出 {actual_quantity} 手")
         elif action == "short":
             max_short = self.max_position + current_position
             actual_quantity = min(qty, max_short)
+            self.logger.info(f"尝试做空 {actual_quantity} 手")
             self.position_manager.open_position(current_price, actual_quantity, False, current_datetime)
         elif action == "cover":
             actual_quantity = self.position_manager.close_positions(current_price, qty, False, current_datetime)
+            self.logger.info(f"尝试买入平空 {actual_quantity} 手")
         else:
-            self.logger.error(f"Unknown trade action: {action}")
+            self.logger.error(f"未知的交易动作: {action}")
             return
 
         self._force_close_if_needed(current_datetime, current_price)

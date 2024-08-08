@@ -44,7 +44,7 @@ logger = logging.getLogger(__name__)
 beijing_tz = pytz.timezone('Asia/Shanghai')
 
 class LLMQMTFuturesStrategy(XtQuantTraderCallback):
-    def __init__(self, path, session_id, account_id, symbol, llm_client, start_time=None):
+    def __init__(self, path, session_id, account_id, symbol, llm_client, start_time=None,use_market_order=False, price_tolerance=0.2):
         self.path = path
         self.session_id = session_id
         self.account_id = account_id
@@ -65,6 +65,9 @@ class LLMQMTFuturesStrategy(XtQuantTraderCallback):
         self.last_processed_time = None
         self.current_bar_data = None
         
+        self.use_market_order = use_market_order
+        self.price_tolerance = price_tolerance
+
         # 使用北京时间
         current_time = datetime.now(beijing_tz)
         self.start_time = start_time or (current_time - timedelta(hours=1))
@@ -295,62 +298,81 @@ class LLMQMTFuturesStrategy(XtQuantTraderCallback):
         return ""
 
     def execute_trade(self, instruction, quantity, price):
-        logger.info(f"Executing trade: {instruction}, quantity: {quantity}, price: {price}")
+        logger.info(f"尝试执行交易: 指令={instruction}, 数量={quantity}, 价格={price}")
         current_position = self.position_manager.get_current_position()
+        logger.info(f"当前仓位: {current_position}, 最大仓位: {self.max_position}")
 
-        if instruction == 'buy':
-            max_buy = self.max_position - current_position
-            actual_quantity = min(quantity, max_buy)
-            if actual_quantity > 0:
-                order_id = self.xt_trader.order_stock(self.account, self.symbol, xtconstant.FUTURE_OPEN_LONG, 
-                                                      actual_quantity, xtconstant.FIX_PRICE, price, 'LLM_strategy', 'LLM_buy')
-                logger.info(f"Sent buy order: {order_id}")
+        try:
+            order_price = price
+            order_type = xtconstant.FIX_PRICE
+
+            if self.use_market_order:
+                # 使用市价委托
+                order_type = xtconstant.MARKET_BEST  # 或者其他适合的市价委托类型
             else:
-                logger.warning("Buy order not executed: Max position reached or invalid quantity")
-        elif instruction == 'sell':
-            actual_quantity = min(quantity, current_position)
-            if actual_quantity > 0:
-                order_id = self.xt_trader.order_stock(self.account, self.symbol, xtconstant.FUTURE_CLOSE_LONG_TODAY, 
-                                                      actual_quantity, xtconstant.FIX_PRICE, price, 'LLM_strategy', 'LLM_sell')
-                logger.info(f"Sent sell order: {order_id}")
+                # 使用限价委托，但添加一个价格容忍度
+                if instruction in ['buy', 'cover']:
+                    order_price = price * (1 + self.price_tolerance)
+                elif instruction in ['sell', 'short']:
+                    order_price = price * (1 - self.price_tolerance)
+
+            if instruction == 'buy':
+                max_buy = self.max_position - current_position
+                actual_quantity = min(quantity, max_buy)
+                if actual_quantity > 0:
+                    order_id = self.xt_trader.order_stock(self.account, self.symbol, xtconstant.FUTURE_OPEN_LONG, 
+                                                        actual_quantity, order_type, order_price, 'LLM_strategy', 'LLM_buy')
+                    logger.info(f"已发送买入订单: ID={order_id}, 数量={actual_quantity}, 价格类型={order_type}, 价格={order_price}")
+                else:
+                    logger.warning(f"买入订单未执行: 已达到最大仓位或无效数量. 最大可买入: {max_buy}, 尝试买入: {quantity}")
+            elif instruction == 'sell':
+                actual_quantity = min(quantity, current_position)
+                if actual_quantity > 0:
+                    order_id = self.xt_trader.order_stock(self.account, self.symbol, xtconstant.FUTURE_CLOSE_LONG_TODAY, 
+                                                        actual_quantity, order_type, order_price, 'LLM_strategy', 'LLM_sell')
+                    logger.info(f"已发送卖出订单: ID={order_id}, 数量={actual_quantity}, 价格类型={order_type}, 价格={order_price}")
+                else:
+                    logger.warning(f"卖出订单未执行: 无多头仓位或无效数量. 当前仓位: {current_position}, 尝试卖出: {quantity}")
+            elif instruction == 'short':
+                max_short = self.max_position + current_position
+                actual_quantity = min(quantity, max_short)
+                if actual_quantity > 0:
+                    order_id = self.xt_trader.order_stock(self.account, self.symbol, xtconstant.FUTURE_OPEN_SHORT, 
+                                                        actual_quantity, order_type, order_price, 'LLM_strategy', 'LLM_short')
+                    logger.info(f"已发送做空订单: ID={order_id}, 数量={actual_quantity}, 价格类型={order_type}, 价格={order_price}")
+                else:
+                    logger.warning(f"做空订单未执行: 已达到最大仓位或无效数量. 最大可做空: {max_short}, 尝试做空: {quantity}")
+            elif instruction == 'cover':
+                actual_quantity = min(quantity, abs(current_position) if current_position < 0 else 0)
+                if actual_quantity > 0:
+                    order_id = self.xt_trader.order_stock(self.account, self.symbol, xtconstant.FUTURE_CLOSE_SHORT_TODAY, 
+                                                        actual_quantity, order_type, order_price, 'LLM_strategy', 'LLM_cover')
+                    logger.info(f"已发送平空订单: ID={order_id}, 数量={actual_quantity}, 价格类型={order_type}, 价格={order_price}")
+                else:
+                    logger.warning(f"平空订单未执行: 无空头仓位或无效数量. 当前仓位: {current_position}, 尝试平仓: {quantity}")
             else:
-                logger.warning("Sell order not executed: No long position or invalid quantity")
-        elif instruction == 'short':
-            max_short = self.max_position + current_position
-            actual_quantity = min(quantity, max_short)
-            if actual_quantity > 0:
-                order_id = self.xt_trader.order_stock(self.account, self.symbol, xtconstant.FUTURE_OPEN_SHORT, 
-                                                      actual_quantity, xtconstant.FIX_PRICE, price, 'LLM_strategy', 'LLM_short')
-                logger.info(f"Sent short order: {order_id}")
+                logger.warning(f"未知的交易指令: {instruction}")
+                return
+
+            # 添加交易后的位置检查
+            time.sleep(1)  # 等待一秒，让订单有时间执行
+            new_position = self.position_manager.get_current_position()
+            if new_position != current_position:
+                logger.info(f"交易成功执行. 新仓位: {new_position}")
             else:
-                logger.warning("Short order not executed: Max position reached or invalid quantity")
-        elif instruction == 'cover':
-            actual_quantity = min(quantity, abs(current_position) if current_position < 0 else 0)
-            if actual_quantity > 0:
-                order_id = self.xt_trader.order_stock(self.account, self.symbol, xtconstant.FUTURE_CLOSE_SHORT_TODAY, 
-                                                      actual_quantity, xtconstant.FIX_PRICE, price, 'LLM_strategy', 'LLM_cover')
-                logger.info(f"Sent cover order: {order_id}")
-            else:
-                logger.warning("Cover order not executed: No short position or invalid quantity")
-        else:
-            logger.warning(f"Unknown instruction: {instruction}")
+                logger.warning(f"交易可能未执行. 仓位未改变: {new_position}")
 
-        # 添加交易后的位置检查
-        time.sleep(1)  # 等待一秒，让订单有时间执行
-        new_position = self.position_manager.get_current_position()
-        if new_position != current_position:
-            logger.info(f"Trade executed successfully. New position: {new_position}")
-        else:
-            logger.warning(f"Trade may not have executed. Position unchanged: {new_position}")
+            self._force_close_if_needed(datetime.now(beijing_tz), price)
 
-        self._force_close_if_needed(datetime.now(beijing_tz), price)
+            profits = self.position_manager.calculate_profits(price)
+            self.total_profit = profits['total_profit']
 
-        profits = self.position_manager.calculate_profits(price)
-        self.total_profit = profits['total_profit']
+            logger.info(f"执行交易后的仓位: {self.position_manager.get_current_position()}")
+            logger.info(f"当前总盈亏: {self.total_profit:.2f}")
+            logger.info(self.position_manager.get_position_details())
 
-        logger.info(f"执行交易后的仓位: {self.position_manager.get_current_position()}")
-        logger.info(f"当前总盈亏: {self.total_profit:.2f}")
-        logger.info(self.position_manager.get_position_details())
+        except Exception as e:
+            logger.error(f"执行交易时发生错误: {str(e)}", exc_info=True)
 
     def run_strategy(self):
         """运行策略"""
