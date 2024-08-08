@@ -129,7 +129,7 @@ class LLMQMTFuturesStrategy(XtQuantTraderCallback):
                 current_time = self.parse_timestamp(bar_data['time'])
                 
                 # 更新当前bar数据
-                self.current_bar_data = pd.Series({
+                new_bar_data = pd.Series({
                     'datetime': current_time,
                     'open': bar_data['open'],
                     'high': bar_data['high'],
@@ -144,12 +144,23 @@ class LLMQMTFuturesStrategy(XtQuantTraderCallback):
                 if self.last_processed_time is None or current_time.minute != self.last_processed_time.minute:
                     logger.info(f"Processing new bar data for time: {current_time}")
                     if current_time >= self.start_time:
-                        self.process_bar(self.current_bar_data)
+                        if self.current_bar_data is not None:
+                            # 处理上一个完整的分钟数据
+                            self.process_bar(self.current_bar_data)
+                        # 重置当前bar数据
+                        self.current_bar_data = new_bar_data
                         self.last_processed_time = current_time
                     else:
                         logger.info(f"Skipping bar data before start time: {current_time}")
                 else:
                     logger.debug(f"Updating current bar data for time: {current_time}")
+                    # 更新当前bar的高低点和收盘价
+                    self.current_bar_data['high'] = max(self.current_bar_data['high'], new_bar_data['high'])
+                    self.current_bar_data['low'] = min(self.current_bar_data['low'], new_bar_data['low'])
+                    self.current_bar_data['close'] = new_bar_data['close']
+                    self.current_bar_data['hold'] = new_bar_data['hold']
+                    # 累加成交量
+                    self.current_bar_data['volume'] += new_bar_data['volume']
             except Exception as e:
                 logger.error(f"Error processing bar: {str(e)}")
                 logger.error(f"Problematic bar data: {bar_data}")
@@ -198,7 +209,6 @@ class LLMQMTFuturesStrategy(XtQuantTraderCallback):
             self.last_processed_minute = current_time
             return True
         return False
-
 
     def process_bar(self, bar_data):
         """处理单个 bar 的数据"""
@@ -286,34 +296,61 @@ class LLMQMTFuturesStrategy(XtQuantTraderCallback):
 
     def execute_trade(self, instruction, quantity, price):
         logger.info(f"Executing trade: {instruction}, quantity: {quantity}, price: {price}")
+        current_position = self.position_manager.get_current_position()
+
         if instruction == 'buy':
-            order_id = self.xt_trader.order_stock(self.account, self.symbol, xtconstant.FUTURE_OPEN_LONG, 
-                                                  quantity, xtconstant.FIX_PRICE, price, 'LLM_strategy', 'LLM_buy')
+            max_buy = self.max_position - current_position
+            actual_quantity = min(quantity, max_buy)
+            if actual_quantity > 0:
+                order_id = self.xt_trader.order_stock(self.account, self.symbol, xtconstant.FUTURE_OPEN_LONG, 
+                                                      actual_quantity, xtconstant.FIX_PRICE, price, 'LLM_strategy', 'LLM_buy')
+                logger.info(f"Sent buy order: {order_id}")
+            else:
+                logger.warning("Buy order not executed: Max position reached or invalid quantity")
         elif instruction == 'sell':
-            # Close long positions, prioritize closing today's positions
-            today_quantity = min(quantity, self.long_position_today)
-            if today_quantity > 0:
-                self.xt_trader.order_stock(self.account, self.symbol, xtconstant.FUTURE_CLOSE_LONG_TODAY, 
-                                           today_quantity, xtconstant.FIX_PRICE, price, 'LLM_strategy', 'LLM_sell_today')
-            history_quantity = min(quantity - today_quantity, self.long_position_history)
-            if history_quantity > 0:
-                self.xt_trader.order_stock(self.account, self.symbol, xtconstant.FUTURE_CLOSE_LONG_HISTORY, 
-                                           history_quantity, xtconstant.FIX_PRICE, price, 'LLM_strategy', 'LLM_sell_history')
+            actual_quantity = min(quantity, current_position)
+            if actual_quantity > 0:
+                order_id = self.xt_trader.order_stock(self.account, self.symbol, xtconstant.FUTURE_CLOSE_LONG_TODAY, 
+                                                      actual_quantity, xtconstant.FIX_PRICE, price, 'LLM_strategy', 'LLM_sell')
+                logger.info(f"Sent sell order: {order_id}")
+            else:
+                logger.warning("Sell order not executed: No long position or invalid quantity")
         elif instruction == 'short':
-            order_id = self.xt_trader.order_stock(self.account, self.symbol, xtconstant.FUTURE_OPEN_SHORT, 
-                                                  quantity, xtconstant.FIX_PRICE, price, 'LLM_strategy', 'LLM_short')
+            max_short = self.max_position + current_position
+            actual_quantity = min(quantity, max_short)
+            if actual_quantity > 0:
+                order_id = self.xt_trader.order_stock(self.account, self.symbol, xtconstant.FUTURE_OPEN_SHORT, 
+                                                      actual_quantity, xtconstant.FIX_PRICE, price, 'LLM_strategy', 'LLM_short')
+                logger.info(f"Sent short order: {order_id}")
+            else:
+                logger.warning("Short order not executed: Max position reached or invalid quantity")
         elif instruction == 'cover':
-            # Close short positions, prioritize closing today's positions
-            today_quantity = min(quantity, self.short_position_today)
-            if today_quantity > 0:
-                self.xt_trader.order_stock(self.account, self.symbol, xtconstant.FUTURE_CLOSE_SHORT_TODAY, 
-                                           today_quantity, xtconstant.FIX_PRICE, price, 'LLM_strategy', 'LLM_cover_today')
-            history_quantity = min(quantity - today_quantity, self.short_position_history)
-            if history_quantity > 0:
-                self.xt_trader.order_stock(self.account, self.symbol, xtconstant.FUTURE_CLOSE_SHORT_HISTORY, 
-                                           history_quantity, xtconstant.FIX_PRICE, price, 'LLM_strategy', 'LLM_cover_history')
+            actual_quantity = min(quantity, abs(current_position) if current_position < 0 else 0)
+            if actual_quantity > 0:
+                order_id = self.xt_trader.order_stock(self.account, self.symbol, xtconstant.FUTURE_CLOSE_SHORT_TODAY, 
+                                                      actual_quantity, xtconstant.FIX_PRICE, price, 'LLM_strategy', 'LLM_cover')
+                logger.info(f"Sent cover order: {order_id}")
+            else:
+                logger.warning("Cover order not executed: No short position or invalid quantity")
         else:
             logger.warning(f"Unknown instruction: {instruction}")
+
+        # 添加交易后的位置检查
+        time.sleep(1)  # 等待一秒，让订单有时间执行
+        new_position = self.position_manager.get_current_position()
+        if new_position != current_position:
+            logger.info(f"Trade executed successfully. New position: {new_position}")
+        else:
+            logger.warning(f"Trade may not have executed. Position unchanged: {new_position}")
+
+        self._force_close_if_needed(datetime.now(beijing_tz), price)
+
+        profits = self.position_manager.calculate_profits(price)
+        self.total_profit = profits['total_profit']
+
+        logger.info(f"执行交易后的仓位: {self.position_manager.get_current_position()}")
+        logger.info(f"当前总盈亏: {self.total_profit:.2f}")
+        logger.info(self.position_manager.get_position_details())
 
     def run_strategy(self):
         """运行策略"""
