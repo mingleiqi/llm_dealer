@@ -148,6 +148,21 @@ class BaiduFinanceAPI:
         else:
             response.raise_for_status()
 
+    def fetch_express_news_v2(self, rn=6, pn=0, tag='A股'):
+        params = {
+            'rn': rn,
+            'pn': pn,
+            'tag': quote(tag),  # URL encode the tag
+            'finClientType': 'pc'
+        }
+        self.headers['acs-token'] = self.generate_acs_token()
+
+        response = requests.get(self.base_urls['express_news'], headers=self.headers, params=params)
+        if response.status_code == 200:
+            return self.parse_express_news(response.json())
+        else:
+            response.raise_for_status()
+
     def parse_express_news(self, data):
         news_list = []
         if "Result" in data and "content" in data["Result"] and "list" in data["Result"]["content"]:
