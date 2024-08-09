@@ -1,14 +1,15 @@
 
 
-from dealer.xt_provider import XTDataProvider   
-from ta import add_all_ta_features
-import akshare as ak
-from dealer.baidu_news import BaiduNewsAPI
+from dealer.stock_data_provider import StockDataProvider
+from core.llms.simple_deep_seek_client import SimpleDeepSeekClient
+from dealer.stock_query import StockQuery
 
 def test():
-    api = BaiduNewsAPI()
-    d = api.fetch_news(200)
-    print(len(d))  
+    llm = SimpleDeepSeekClient()
+    data = StockDataProvider(llm)
+    query = StockQuery(llm,data)
+    result = query.query("查询过去一个月涨幅超过2%的科技股")
+    print(result)
 
 
 if __name__ == "__main__":
