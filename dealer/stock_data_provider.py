@@ -1862,6 +1862,8 @@ class StockDataProvider:
         """
         df = ak.stock_zh_a_spot_em()
         df_summary = self.data_summarizer.get_data_summary(df)
+        global_vars={}
+        global_vars["df"]=df
         prompt = f"""
             需要处理的请求：
             {query}
@@ -1891,6 +1893,7 @@ class StockDataProvider:
                 ```
             5. 确保 result 是一个字典，键为股票代码，值为该股票的其他信息字符串
             6. 不要使用任何不在 df 中的列名
+            7. 使用名字查询的时候，注意使用模糊查询的方法，避免名字不精确查询不到数据
         """
         new_prompt = prompt
         while True:
@@ -1900,7 +1903,7 @@ class StockDataProvider:
                 if not code:
                     raise ValueError("No Python code found in the response, 请提供python代码，并包裹在```python  ```之中")
                 
-                execute_result = self.code_runner.run(code)
+                execute_result = self.code_runner.run(code,global_vars=global_vars)
                 if execute_result["error"]:
                     raise execute_result["error"]
                 if "result" not in execute_result["updated_vars"]:
@@ -2003,6 +2006,7 @@ class StockDataProvider:
         # 获取所有概念板块数据
         df_concepts = ak.stock_board_concept_name_em()
         df_summary = self.data_summarizer.get_data_summary(df_concepts)
+        global_vars ={"df_concepts":df_concepts}
         prompt = f"""
             需要处理的请求：
             {query}
@@ -2030,6 +2034,16 @@ class StockDataProvider:
                 ```
             5. 确保 result 是一个列表，其中包含符合条件的板块名称
             6. 不要使用任何不在 df_concepts 中的列名
+            7. 示例代码（根据实际情况调整）：
+            ```python
+            import re
+            keywords = ['科技', '电子', '信息', '通信', '互联网', '软件','人工智能','芯片']
+            pattern = '|'.join(keywords)
+            mask = df_concepts['板块名称'].str.contains(pattern, case=False, na=False)
+            result = df_concepts[mask]['板块名称'].tolist()
+            ```
+            8. 如果没有完全匹配的结果，考虑返回部分匹配或相关的结果
+            9. 添加注释解释你的匹配逻辑
         """
         new_prompt = prompt
         while True:
@@ -2039,7 +2053,7 @@ class StockDataProvider:
                 if not code:
                     raise ValueError("No Python code found in the response, 请提供python代码，并包裹在```python  ```之中")
                 
-                execute_result = self.code_runner.run(code)
+                execute_result = self.code_runner.run(code,global_vars=global_vars)
                 if execute_result["error"]:
                     raise execute_result["error"]
                 if "result" not in execute_result["updated_vars"]:
@@ -2127,6 +2141,7 @@ class StockDataProvider:
         # 获取所有行业板块数据
         df_industries = ak.stock_board_industry_name_em()
         df_summary = self.data_summarizer.get_data_summary(df_industries)
+        global_vars={"df_industries":df_industries}
         prompt = f"""
             需要处理的请求：
             {query}
@@ -2145,15 +2160,22 @@ class StockDataProvider:
             result = []
             ```
             3. 对df_industries过滤后，需要把符合条件的板块名提取出来，赋值给result
-            4. 根据query的内容对df_industries进行过滤，例如：
-                - 查询："涨幅超过2%的板块"
-                - 代码
-                ```python
-                df_filtered = df_industries[df_industries['涨跌幅']>2]
-                result = df_filtered['板块名称'].tolist()
-                ```
+            4. 根据query的内容对df_industries进行过滤，考虑以下几点：
+            - 使用更灵活的匹配方式，如模糊匹配或相关词匹配
+            - 考虑同义词或相关词，例如"科技"可能与"电子"、"信息"、"通信"等相关
+            - 可以使用正则表达式进行更复杂的匹配
             5. 确保 result 是一个列表，其中包含符合条件的板块名称
             6. 不要使用任何不在 df_industries 中的列名
+            7. 示例代码（根据实际情况调整）：
+            ```python
+            import re
+            keywords = ['科技', '电子', '信息', '通信', '互联网', '软件','人工智能','芯片']
+            pattern = '|'.join(keywords)
+            mask = df_industries['板块名称'].str.contains(pattern, case=False, na=False)
+            result = df_industries[mask]['板块名称'].tolist()
+            ```
+            8. 如果没有完全匹配的结果，考虑返回部分匹配或相关的结果
+            9. 添加注释解释你的匹配逻辑
         """
         new_prompt = prompt
         while True:
@@ -2163,7 +2185,7 @@ class StockDataProvider:
                 if not code:
                     raise ValueError("No Python code found in the response, 请提供python代码，并包裹在```python  ```之中")
                 
-                execute_result = self.code_runner.run(code)
+                execute_result = self.code_runner.run(code,global_vars=global_vars)
                 if execute_result["error"]:
                     raise execute_result["error"]
                 if "result" not in execute_result["updated_vars"]:
@@ -2235,6 +2257,7 @@ class StockDataProvider:
             df = data_source
 
         df_summary = self.data_summarizer.get_data_summary(df)
+        global_vars={"df":df}
         prompt = f"""
             需要处理的请求：
             {query}
@@ -2261,6 +2284,7 @@ class StockDataProvider:
                 ```
             5. 确保 result 是一个DataFrame，包含符合条件的所有行
             6. 不要使用任何不在 df 中的列名
+            7. 使用名字查询的时候，注意使用模糊查询的方法，避免名字不精确查询不到数据
         """
         new_prompt = prompt
         while True:
@@ -2270,7 +2294,7 @@ class StockDataProvider:
                 if not code:
                     raise ValueError("No Python code found in the response, 请提供python代码，并包裹在```python  ```之中")
                 
-                execute_result = self.code_runner.run(code)
+                execute_result = self.code_runner.run(code,global_vars=global_vars)
                 if execute_result["error"]:
                     raise execute_result["error"]
                 if "result" not in execute_result["updated_vars"]:
@@ -2638,18 +2662,18 @@ class StockDataProvider:
 
     def get_self_description(self)->str:
         prompt="""
-        适合用于选择股票范围的函数：
-            - select_stock_by_query                     使用最新行情数据，用自然语言进行筛选
-            - get_index_components                      输入指数代码，获得成分列表
-            - get_code_name                             全部股票代码的字典
-            - get_concept_board_components              用自然语言进行概念板块选股
-            - select_stocks_by_industry_board_query     用自然语言进行行业板块选股
-            - get_rebound_stock_pool                    炸板股票池
-            - get_new_stock_pool                        新股股票池
-            - get_strong_stock_pool                     强势股票池
+        适合用于选择股票范围的函数(只有get_code_name函数只返回名字和代码，其余函数均会返回数据，方便进行下一次筛选)：
+            - select_stock_by_query                     使用最新行情数据，用自然语言进行筛选，返回值包含股票当前的数据信息
+            - get_index_components                      输入指数代码，获得成分列表，返回值只有名字和代码
+            - get_code_name                             全部股票代码的字典，返回值只有名字和代码
+            - get_concept_board_components              用自然语言进行概念板块选股，query只能针对板块的名字和板块的数据，返回值包含股票当前的数据信息
+            - select_stocks_by_industry_board_query     用自然语言进行行业板块选股,query只能针对板块的名字和板块的数据，返回值包含股票当前的数据信息
+            - get_rebound_stock_pool                    炸板股票池，返回值包含股票数据
+            - get_new_stock_pool                        新股股票池，返回值包含股票数据
+            - get_strong_stock_pool                     强势股票池，返回值包含股票数据
             - get_market_anomaly                        盘口异动，包括:'火箭发射', '快速反弹', '大笔买入', '封涨停板', '打开跌停板', '有大买盘', '竞价上涨', '高开5日线', '向上缺口', '60日新高', '60日大幅上涨', '加速下跌', '高台跳水', '大笔卖出', '封跌停板', '打开涨停板', '有大卖盘', '竞价下跌', '低开5日线', '向下缺口', '60日新低', '60日大幅下跌'
-            - get_active_a_stock_stats                  活跃个股，查询周期：'近一月', '近三月', '近六月', '近一年'
-            - get_daily_lhb_details                     龙虎榜
+            - get_active_a_stock_stats                  活跃个股，查询周期：'近一月', '近三月', '近六月', '近一年'。，返回值包含股票数据
+            - get_daily_lhb_details                     龙虎榜，返回值包含股票数据
             - get_institute_recommendations             机构推荐，包括：'最新投资评级', '上调评级股票', '下调评级股票', '股票综合评级', '首次评级股票', '目标涨幅排名', '机构关注度', '行业关注度', '投资评级选股'
             - get_investment_ratings                    最新投资评级
             - get_individual_stock_fund_flow_rank       资金流排名
