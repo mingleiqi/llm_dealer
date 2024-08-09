@@ -751,7 +751,7 @@ class LLMDealer:
                 return True
         return False
 
-    def _log_bar_info(self, bar: Union[pd.Series, dict], news: str, trade_instruction: str):
+    def _log_bar_info(self, bar: Union[pd.Series, dict], news: str, trade_instruction: str,trade_reason, trade_plan):
         try:
             # Ensure the output directory exists
             os.makedirs('./output', exist_ok=True)
