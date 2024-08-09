@@ -12,6 +12,7 @@ from datetime import datetime, timedelta
 import re
 import logging
 import pytz
+from dateutil import parser
 
 # 设置日志
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -400,7 +401,7 @@ if __name__ == "__main__":
     session_id = generate_six_digit_random_number()
 
     trade_rules = get_key('trade_rules')
-    if not trade_rule:
+    if not trade_rules:
         trade_rules = ""
     
     llm_api = get_key('llm_api')
