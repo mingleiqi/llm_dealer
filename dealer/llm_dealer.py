@@ -32,6 +32,8 @@ class TradePosition:
         self.entry_time = entry_time
         self.exit_price = None
         self.exit_time = None
+        self.highest_profit = 0
+        self.lowest_profit = 0
 
     def close_position(self, exit_price: float, exit_time: pd.Timestamp):
         self.exit_price = exit_price
@@ -41,11 +43,17 @@ class TradePosition:
         price_diff = current_price - self.entry_price if self.position_type == PositionType.LONG else self.entry_price - current_price
         if self.exit_price is not None:
             price_diff = self.exit_price - self.entry_price if self.position_type == PositionType.LONG else self.entry_price - self.exit_price
+        
+        # Update highest and lowest profit if position is still open
+        if not self.is_closed():
+            self.highest_profit = max(self.highest_profit, price_diff)
+            self.lowest_profit = min(self.lowest_profit, price_diff)
+        
         return price_diff
 
     def is_closed(self) -> bool:
         return self.exit_price is not None
-
+    
 class TradePositionManager:
     def __init__(self):
         self.positions: List[TradePosition] = []
@@ -69,10 +77,16 @@ class TradePositionManager:
     def calculate_profits(self, current_price: float) -> Dict[str, float]:
         realized_profit = sum(pos.calculate_profit(current_price) for pos in self.positions if pos.is_closed())
         unrealized_profit = sum(pos.calculate_profit(current_price) for pos in self.positions if not pos.is_closed())
+        
+        highest_unrealized_profit = sum(pos.highest_profit for pos in self.positions if not pos.is_closed())
+        lowest_unrealized_profit = sum(pos.lowest_profit for pos in self.positions if not pos.is_closed())
+        
         return {
             "realized_profit": realized_profit,
             "unrealized_profit": unrealized_profit,
-            "total_profit": realized_profit + unrealized_profit
+            "total_profit": realized_profit + unrealized_profit,
+            "highest_unrealized_profit": highest_unrealized_profit,
+            "lowest_unrealized_profit": lowest_unrealized_profit
         }
 
     def get_current_position(self) -> int:
@@ -88,13 +102,13 @@ class TradePositionManager:
         if long_positions:
             details += "多头:\n"
             for i, pos in enumerate(long_positions, 1):
-                details += f"  {i}. 开仓价: {pos.entry_price:.2f}, 开仓时间: {pos.entry_time}\n"
+                details += f"  {i}. 开仓价: {pos.entry_price:.2f}, 开仓时间: {pos.entry_time}, 最高盈利: {pos.highest_profit:.2f}, 最低盈利: {pos.lowest_profit:.2f}\n"
         if short_positions:
             details += "空头:\n"
             for i, pos in enumerate(short_positions, 1):
-                details += f"  {i}. 开仓价: {pos.entry_price:.2f}, 开仓时间: {pos.entry_time}\n"
+                details += f"  {i}. 开仓价: {pos.entry_price:.2f}, 开仓时间: {pos.entry_time}, 最高盈利: {pos.highest_profit:.2f}, 最低盈利: {pos.lowest_profit:.2f}\n"
         return details
-
+    
 class LLMDealer:
     def __init__(self, llm_client, symbol: str,data_provider: MainContractProvider,trade_rules:str="" ,
                  max_daily_bars: int = 60, max_hourly_bars: int = 30, max_minute_bars: int = 240,
