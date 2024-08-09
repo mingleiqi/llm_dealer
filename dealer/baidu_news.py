@@ -1,3 +1,11 @@
+from datetime import datetime
+import hashlib
+import random
+import time
+from urllib.parse import quote
+import requests
+
+
 class BaiduFinanceAPI:
     def __init__(self):
         self.base_urls = {
@@ -270,7 +278,7 @@ class BaiduFinanceAPI:
                 calendar_list.append(event_item)
         return calendar_list
 
-    def fetch_hotrank(self, day, hour, pn=0, rn=100, market='all', type='hour'):
+    def fetch_hotrank(self, day, hour=7, pn=0, rn=100, market='all', type='hour'):
         """
         获取指定日期和时间的热门股票排名。
 
@@ -323,7 +331,7 @@ class BaiduFinanceAPI:
                 hotrank_list.append(rank_item)
         return hotrank_list
 
-    def fetch_recommendation_list(self, day, hour, pn=0, rn=100, market='all', type='hour'):
+    def fetch_recommendation_list(self, day, hour=7, pn=0, rn=100, market='all', type='hour'):
         """
         获取指定日期和时间的股票推荐列表。
 
@@ -376,7 +384,7 @@ class BaiduFinanceAPI:
         return recommendation_list
 
     # 添加 fetch_sentiment_rank 方法
-    def fetch_sentiment_rank(self, pn=0, rn=10, market='', finance_type=''):
+    def fetch_sentiment_rank(self, pn=0, rn=10, market='ab', finance_type='stock'):
         """
         获取市场情绪排名数据。
 

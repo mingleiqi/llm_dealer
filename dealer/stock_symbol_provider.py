@@ -8,6 +8,6 @@ class StockSymbolProvider(StringMatcher, metaclass=Singleton):
     def  __init__(self):
         spot =  ak.stock_zh_a_spot()
         index_cache="./json/stock_stock_zh_a_spot.pickle"
-        super().__init__(df, index_cache=index_cache, index_column='名称', result_column='代码')
+        super().__init__(spot, index_cache=index_cache, index_column='名称', result_column='代码')
     def __getitem__(self, query):
         return self.rapidfuzz_match(query)
