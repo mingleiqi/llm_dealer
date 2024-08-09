@@ -112,7 +112,7 @@ class MainContractProvider:
         return final_token   
     
     def get_futures_news(self, code: str = 'SC0', page_num: int = 0, page_size: int = 20) -> Optional[pd.DataFrame]:
-        code = f"{code[:-1]}888" if code.endswith('0') else f"{code}888"
+        code = f"{code[:-1]}000" if code.endswith('0') else f"{code}000"
         url = 'https://finance.pae.baidu.com/vapi/getfuturesnews'
         
         headers = {
