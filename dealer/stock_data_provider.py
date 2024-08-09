@@ -2586,6 +2586,56 @@ class StockDataProvider:
         
         return result
 
+    def summarizer_news(self, news_source: list[str], query: str="总结市场热点，市场机会", max_word: int = 240) -> str:
+        def chunk_text(text_list: list[str], max_chars: int = 10000) -> list[str]:
+            chunks = []
+            current_chunk = ""
+            for text in text_list:
+                if len(current_chunk) + len(text) <= max_chars:
+                    current_chunk += text + " "
+                else:
+                    chunks.append(current_chunk.strip())
+                    current_chunk = text + " "
+            if current_chunk:
+                chunks.append(current_chunk.strip())
+            return chunks
+
+        def summarize_chunk(chunk: str, query: str) -> str:
+            prompt = f"请根据以下查询要求总结这段新闻内容：\n\n查询：{query}\n\n新闻内容：\n{chunk}\n\n总结："
+            return self.llm_client.one_chat(prompt)
+
+        # 将新闻分成不超过10000字符的块
+        news_chunks = chunk_text(news_source)
+        
+        # 对每个块进行摘要
+        summaries = [summarize_chunk(chunk, query) for chunk in news_chunks]
+        
+        # 如果摘要总长度已经小于max_word，直接返回
+        if sum(len(s) for s in summaries) <= max_word:
+            return " ".join(summaries)
+        
+        # 否则，继续进行摘要，直到总长度不超过max_word
+        while sum(len(s) for s in summaries) > max_word:
+            if len(summaries) == 1:
+                # 如果只剩一个摘要但仍然超过max_word，进行最后一次摘要
+                final_prompt = f"请将以下摘要进一步压缩到不超过{max_word}个字：\n\n{summaries[0]}"
+                return self.llm_client.one_chat(final_prompt)[:max_word]
+            
+            # 将现有的摘要分成两两一组进行进一步摘要
+            new_summaries = []
+            for i in range(0, len(summaries), 2):
+                if i + 1 < len(summaries):
+                    combined = summaries[i] + " " + summaries[i+1]
+                    new_summary = summarize_chunk(combined, query)
+                    new_summaries.append(new_summary)
+                else:
+                    new_summaries.append(summaries[i])
+            
+            summaries = new_summaries
+        
+        # 返回最终的摘要
+        return " ".join(summaries)[:max_word]
+
     def get_self_description(self)->str:
         prompt="""
         适合用于选择股票范围的函数：
@@ -2644,8 +2694,9 @@ class StockDataProvider:
             - get_baidu_market_news                     百度市场新闻
             - get_baidu_stock_news                      百度个股新闻
             - get_market_news_300                       财联社新闻300条
-        用于查询函数文档
-            - get_function_docstring                    查询函数文档
+        用于新闻数据处理
+            - summarizer_news                           把新闻数据根据 query 的要求 总结出短摘要
+        
         """
         return prompt
     
