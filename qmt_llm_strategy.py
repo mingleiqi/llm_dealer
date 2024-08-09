@@ -384,8 +384,7 @@ class LLMQMTFuturesStrategy(XtQuantTraderCallback):
 
 
 if __name__ == "__main__":
-    from core.llms.mini_max_client import MiniMaxClient
-    path = r'D:\app\迅投\userdata'
+    
     import random
 
     def generate_six_digit_random_number():
@@ -394,6 +393,11 @@ if __name__ == "__main__":
     from core.config import get_key
     account_id=get_key('account_id')
     if not account_id:
+        print("没有设置account_id")
+        exit(1)
+    xuntou_path = get_key("xuntou_path")
+    if not xuntou_path:
+        print("没有设置讯投APP的路径")
         exit(1)
     symbol = get_key('symbol')
     if not symbol:
@@ -418,7 +422,7 @@ if __name__ == "__main__":
     # 设置起始时间为当前北京时间前1小时
     start_time = datetime.now(beijing_tz) - timedelta(hours=1)
 
-    strategy = LLMQMTFuturesStrategy(path, session_id, account_id, symbol, llm_client, trade_rules , start_time)
+    strategy = LLMQMTFuturesStrategy(xuntou_path, session_id, account_id, symbol, llm_client, trade_rules , start_time)
 
     if strategy.start():
         strategy.run_strategy()
