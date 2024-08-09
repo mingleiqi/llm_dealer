@@ -1,5 +1,6 @@
 import logging
 from typing import List, Dict, Tuple, Optional, Union ,Literal
+import numpy as np
 import pandas as pd
 from datetime import datetime, timedelta
 import pytz
@@ -206,8 +207,10 @@ class StockDataProvider:
             date = self.get_previous_trading_date()
         return ak.stock_zt_pool_previous_em(date)
 
-    def stock_changes_em(self,symbol:Literal['火箭发射', '快速反弹', '大笔买入', '封涨停板', '打开跌停板', '有大买盘', '竞价上涨', '高开5日线', '向上缺口', '60日新高', '60日大幅上涨', '加速下跌', '高台跳水', '大笔卖出', '封跌停板', '打开涨停板', '有大卖盘', '竞价下跌', '低开5日线', '向下缺口', '60日新低', '60日大幅下跌']='大笔买入'):
+    def stock_changes_em(self,indicator:Literal['火箭发射', '快速反弹', '大笔买入', '封涨停板', '打开跌停板', '有大买盘', '竞价上涨', '高开5日线', '向上缺口', '60日新高', '60日大幅上涨', '加速下跌', '高台跳水', '大笔卖出', '封跌停板', '打开涨停板', '有大卖盘', '竞价下跌', '低开5日线', '向下缺口', '60日新低', '60日大幅下跌']='大笔买入'):
         """
+        盘口异动
+            indicator=choice of {'火箭发射', '快速反弹', '大笔买入', '封涨停板', '打开跌停板', '有大买盘', '竞价上涨', '高开5日线', '向上缺口', '60日新高', '60日大幅上涨', '加速下跌', '高台跳水', '大笔卖出', '封跌停板', '打开涨停板', '有大卖盘', '竞价下跌', '低开5日线', '向下缺口', '60日新低', '60日大幅下跌'
         返回值：
             名称	类型	描述
             时间	object	-
@@ -216,10 +219,12 @@ class StockDataProvider:
             板块	object	-
             相关信息	object	注意: 不同的 symbol 的单位不同
         """
+        return ak.stock_changes_em(symbol=indicator)
 
-    def stock_dzjy_hygtj(self,symbol:Literal['近一月', '近三月', '近六月', '近一年']="近一月"):
+    def stock_dzjy_hygtj(self,indicator:Literal['近一月', '近三月', '近六月', '近一年']="近一月"):
         """
         活跃 A 股统计
+            indicator = choice of {'近一月', '近三月', '近六月', '近一年'}
         返回值:
             名称	类型	描述
             序号	int64	-
@@ -239,7 +244,7 @@ class StockDataProvider:
             上榜日后平均涨跌幅-10日	float64	注意符号: %
             上榜日后平均涨跌幅-20日	float64	注意符号: %
         """
-        return ak.stock_dzjy_hygtj()
+        return ak.stock_dzjy_hygtj(symbol=indicator)
 
     def stock_lhb_detail_daily_sina(self):
         """
@@ -256,9 +261,39 @@ class StockDataProvider:
             指标	object	注意单位: 万元
         """
         date=self.get_previous_trading_date()
-        return stock_lhb_detail_daily_sina(date)
+        return ak.stock_lhb_detail_daily_sina(date)
+
+    def get_next_financial_report_date(self):
+        """
+        获取下一个财报发布日期(即将发生的)
+        返回值yyyymmdd
+        """
+        # 当前日期
+        today = datetime.today()
+        year = today.year
+        month = today.month
+
+        # 定义财报发行日期
+        report_dates = [
+            datetime(year, 3, 31),
+            datetime(year, 6, 30),
+            datetime(year, 9, 30),
+            datetime(year, 12, 31)
+        ]
+
+        # 查找下一个财报发行日期
+        for report_date in report_dates:
+            if today < report_date:
+                return report_date.strftime("%Y%m%d")
+
+        # 如果当前日期在10月1日至12月31日之间，返回下一年的3月31日
+        return datetime(year + 1, 3, 31).strftime("%Y%m%d")
 
     def get_latest_financial_report_date(self):
+        """
+        获取最近的财报发布日期(已经发生的)
+        返回值yyyymmdd
+        """
         # 当前日期
         today = datetime.today()
         year = today.year
@@ -293,12 +328,12 @@ class StockDataProvider:
         date = self.get_latest_financial_report_date()
         return ak.stock_report_fund_hold(symbol=symbol, date=date)
 
-    def stock_market_desc(self):
+    def stock_market_desc(self)->str:
         """
         获取市场总体描述信息，每个市场的市盈率，指数等信息
         """
         market_descriptions = []
-
+        markets = ["上证", "深证", "创业板", "科创版"]
         for market in markets:
             try:
                 df = ak.stock_market_pe_lg(symbol=market)
@@ -318,6 +353,7 @@ class StockDataProvider:
 
     def stock_a_all_pb(self):
         """
+        A 股等权重与中位数市净率
         返回值:
             名称	类型	描述
             date	object	日期
@@ -333,6 +369,7 @@ class StockDataProvider:
 
     def stock_a_ttm_lyr(self):
         """
+        A 股等权重与中位数市盈率
         返回值:
             名称	类型	描述
             date	object	日期
@@ -352,7 +389,7 @@ class StockDataProvider:
         """
         return ak.stock_a_ttm_lyr()
 
-    def get_current_buffett_index(self):
+    def get_current_buffett_index(self)->str:
         """
         获取当前巴菲特指数的最新数据
         
@@ -578,7 +615,7 @@ class StockDataProvider:
             date = self.get_previous_trading_date()
         return ak.stock_rank_forecast_cninfo(date=date)
     
-    def stock_financial_analysis_indicator(self,symbol:str,start_year:str):
+    def stock_financial_analysis_indicator(self,symbol:str,start_year:str="2020"):
         """
         财务指标
         输入参数:
@@ -672,30 +709,42 @@ class StockDataProvider:
             2-3年以内其它应收款(元)	float64	-
             3年以内其它应收款(元)	float64	-
         """
-        return ak.stock_financial_analysis_indicator(symbol,indicator)
+        return ak.stock_financial_analysis_indicator(symbol,start_year)
  
     def stock_financial_abstract_ths(self,symbol:str,indicator:Literal["按报告期", "按年度", "按单季度"]="按报告期"):
         """
+        关键指标
         输入参数:
             symbol	str	股票代码
             indicator	str	indicator="按报告期"; choice of {"按报告期", "按年度", "按单季度"}
         """
         return ak.stock_financial_abstract_ths(symbol,indicator)
 
-    def get_stock_balance_sheet_by_report_em(self,symbol:str):
+    def get_stock_balance_sheet_by_report_em(self, symbol: str) -> str:
         """
-        输入参数:symbol	str	 股票代码
-        返回值:
-            名称	类型	描述
-            -	-	319 项，不逐一列出
-        """
-        return ak.stock_balance_sheet_by_report_em(symbol)
+        获取指定股票的最新资产负债表，并将所有列的数据拼接成一个字符串返回。
 
-    def get_stock_financial_report_sina(self,stock:str,symbol:Literal["资产负债表", "利润表", "现金流量表"]="现金流量表"):
+        参数:
+        symbol (str): 股票代码。
+
+        返回:
+        str: 资产负债表的格式化字符串，包括所有319项数据。
+        """
+        df = ak.stock_balance_sheet_by_report_em(symbol)
+        
+        # 选择最新的一行数据
+        latest_row = df.tail(1).iloc[0]
+        
+        # 将所有列的数据拼接成一个字符串
+        balance_sheet_str = "\n".join([f"{col}: {latest_row[col]}" for col in df.columns])
+        
+        return balance_sheet_str
+
+    def get_stock_financial_report_sina(self,stock:str,indicator:Literal["资产负债表", "利润表", "现金流量表"]="现金流量表"):
         """
         输入参数:
                 stock	str	stock="sh600600"; 带市场标识的股票代码
-                symbol	str	symbol="现金流量表"; choice of {"资产负债表", "利润表", "现金流量表"}
+                indicator	str	indicator="现金流量表"; choice of {"资产负债表", "利润表", "现金流量表"}
         返回值:
             名称	类型	描述
             报告日	object	报告日期
@@ -704,9 +753,11 @@ class StockDataProvider:
             类型	object	-
             更新日期	object	-
         """
+        return ak.stock_financial_report_sina(stock,indicator)
 
     def get_stock_individual_fund_flow_rank(self,indicator:str="今日"):
         """
+        个股资金流排名
         输入参数:indicator	str	indicator="今日"; choice {"今日", "3日", "5日", "10日"}
         返回值:
             名称	类型	描述
@@ -730,6 +781,7 @@ class StockDataProvider:
 
     def get_stock_stock_fund_flow_individual(self,symbol:str,market:str="sh" ):
         """
+        个股资金流排名
         输入参数:stock	str	stock="000425"; 股票代码
                 market	str	market="sh"; 上海证券交易所: sh, 深证证券交易所: sz, 北京证券交易所: bj
         返回值:
@@ -746,7 +798,7 @@ class StockDataProvider:
             成交额	object	注意单位: 元
             大单流入	object	注意单位: 元
         """
-        return ak.stock_individual_fund_flow(indicator)
+        return ak.stock_individual_fund_flow(symbol,market)
 
     def get_cash_flow_statement_summary(self) -> dict:
         """
@@ -905,6 +957,7 @@ class StockDataProvider:
 
     def get_stock_info(self,symbol:str)->pd.DataFrame:
         """
+        公司概况
         输入参数:symbol	str	股票代码
         返回值:
             名称	类型	描述
@@ -939,6 +992,7 @@ class StockDataProvider:
 
     def get_stock_report(self,symbol:str):
         """
+        个股研报
         输入参数:symbol	str	股票代码
         返回值:
             名称	类型	描述
@@ -1062,7 +1116,7 @@ class StockDataProvider:
 
     def stock_amount_of_increase(self,market:Literal["北向", "沪股通", "深股通"] ="北向" , indicator:Literal["今日排行", "3日排行", "5日排行", "10日排行", "月排行", "季排行", "年排行"] ="月排行"):
         """
-        do not use this function
+        个股排行
         """
         return ak.stock_hsgt_hold_stock_em(indicator=indicator, market=market)
 
@@ -1150,6 +1204,7 @@ class StockDataProvider:
 
     def get_mainbussiness_more(self,symbol)->pd.DataFrame:
         """
+        主营构成
         输入参数:
             symbol:str  股票代码
         返回值:
@@ -1170,6 +1225,7 @@ class StockDataProvider:
 
     def get_mainbussiness_mid(self,symbol:str)->pd.DataFrame:
         """
+        主营构成
         输入参数:
             symbol:str  股票代码
         返回值:
@@ -1181,6 +1237,7 @@ class StockDataProvider:
 
     def get_manager_talk(self,symbol:str):
         """
+        管理层讨论与分析
         输入参数:
             symbol:str  股票代码
         返回值:
@@ -1192,6 +1249,7 @@ class StockDataProvider:
 
     def get_historical_daily_data(self, symbol: str, start_date: str, end_date: str) -> pd.DataFrame:
         """
+        日线数据
         返回值：Dict[symbol,list]
         list=名称	类型	描述
             日期	object	交易日
@@ -1211,6 +1269,7 @@ class StockDataProvider:
 
     def get_code_name(self) -> Dict[str, str]:
         """
+        名称和代码的字典，用代码查名称
         返回值: Dict[代码,名称]
         """
         if self.code_name_list:
@@ -1222,6 +1281,7 @@ class StockDataProvider:
 
     def get_news_updates(self, symbols: List[str],since_time: datetime) -> Dict[str, List[Dict]]:
         """
+        个股新闻更新
         返回值: Dict[symbol,list]
         list=名称	类型	描述
             关键词	object	-
@@ -1239,6 +1299,7 @@ class StockDataProvider:
 
     def get_market_news_300(self) -> List[Dict]:
         """
+        财联社300条新闻
         返回值:
             名称	类型	描述
             标题	object	-
@@ -1250,6 +1311,7 @@ class StockDataProvider:
 
     def get_stock_minute(self,symbol:str, period='1'):
         """
+        个股分钟数据
         输入参数：
             symbol:str 股票代码
             period:str 周期，默认为1，可选值：1,5,15,30,60
@@ -1264,15 +1326,19 @@ class StockDataProvider:
         """
         return ak.stock_zh_a_minute(symbol=symbol, period=period)
 
-    def get_index_data(self, index_symbols: List[str]) -> Dict[str, pd.DataFrame]:
+    def get_index_data(self, index_symbols: List[str],start_date:str,end_date:str) -> Dict[str, pd.DataFrame]:
+        """
+        获取指数数据
+        """
         result = {}
         for index in index_symbols:
-            data = ak.stock_zh_index_daily(symbol=index)
+            data = ak.index_zh_a_hist(symbol=index,period="daily",start_date=start_date,end_date=end_date)
             result[index] = data
         return result
     
     def get_stock_news(self, symbols: List[str]) -> Dict[str, List[Dict]]:
         """
+        获取个股新闻
         输入参数:
             symbols: List[str]  股票代码列表
         返回值:
@@ -1340,7 +1406,7 @@ class StockDataProvider:
         Dict[str, List[str]]: 一个字典，其中键是股票代码，值是该股票在指定日期内发布的公告列表。
         """
         result = {}
-        if date is None:
+        if not date:
             date = self.get_last_trade_date()
         df = ak.stock_gsrl_gsdt_em(date=date)
         for symbol in symbols:
@@ -1349,9 +1415,6 @@ class StockDataProvider:
             for row in filtered_df.itertuples():
                 result[symbol].append(row["具体事项"])
         return result
-
-    def stock_info_global(self):
-        return ak.stock_info_global_ths()
 
     def stock_info_global_ths(self):
         """
