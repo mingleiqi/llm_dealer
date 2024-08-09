@@ -1237,7 +1237,7 @@ class StockDataProvider:
             news = news[news["发布时间"] > since_time]
             result[symbol] = news.to_dict(orient="list")
 
-    def get_market_news(self) -> List[Dict]:
+    def get_market_news_300(self) -> List[Dict]:
         """
         返回值:
             名称	类型	描述
@@ -1290,21 +1290,65 @@ class StockDataProvider:
             
             result[symbol] = news.to_dict(orient="list")
     
-    def get_main_cx_news(self)->pd.DataFrame:
+    def get_stock_info(self,symbol: str) -> str:
         """
-        输入参数
-        无
+        查询指定股票代码的个股信息，并将结果转换为格式化的字符串。
 
-        输出参数
+        参数:
+        symbol (str): 股票代码，例如 "603777"。
 
-        名称	类型	描述
-        tag	object	-
-        summary	object	-
-        interval_time	object	-
-        pub_time	object	-
-        url	object	-
+        返回:
+        str: 个股信息的格式化字符串，包括总市值、流通市值、行业、上市时间、股票代码、股票简称、总股本和流通股本。
         """
-        return ak.stock_news_main_cx()
+
+        # 获取个股信息数据框
+        stock_info_df = ak.stock_individual_info_em(symbol=symbol)
+
+        # 将数据转换为可读的字符串格式
+        stock_info_str = "\n".join([f"{row['item']}: {row['value']}" for _, row in stock_info_df.iterrows()])
+        
+        return stock_info_str
+
+    def get_realtime_stock_data(symbol: str) -> str:
+        """
+        查询指定证券代码的最新行情数据，并将结果转换为格式化的字符串。
+
+        参数:
+        symbol (str): 证券代码，可以是 A 股个股代码，A 股场内基金代码，A 股指数，美股代码, 美股指数，例如 "SH600000"。
+
+        返回:
+        str: 最新行情数据的格式化字符串，包括代码、现价、涨幅、最高价、最低价、市盈率、成交量等信息。
+        """
+
+        # 获取实时行情数据
+        stock_spot_df = ak.stock_individual_spot_xq(symbol=symbol)
+
+        # 将数据转换为可读的字符串格式
+        stock_spot_str = "\n".join([f"{row['item']}: {row['value']}" for _, row in stock_spot_df.iterrows()])
+        
+        return stock_spot_str
+
+    def get_stock_announcements(self,symbols: List[str], date: str = None) -> Dict[str, List[str]]:
+        """
+        获取指定日期内指定股票代码的公告信息。
+
+        参数:
+        symbols (List[str]): 股票代码列表。
+        date (str, 可选): 查询的日期，格式为 "YYYY-MM-DD"。如果未指定，则使用最近的交易日期。
+
+        返回:
+        Dict[str, List[str]]: 一个字典，其中键是股票代码，值是该股票在指定日期内发布的公告列表。
+        """
+        result = {}
+        if date is None:
+            date = self.get_last_trade_date()
+        df = ak.stock_gsrl_gsdt_em(date=date)
+        for symbol in symbols:
+            result[symbol] = []
+            filtered_df = df[df['股票代码'] == symbol]
+            for row in filtered_df.itertuples():
+                result[symbol].append(row["具体事项"])
+        return result
 
     def stock_info_global(self):
         return ak.stock_info_global_ths()
