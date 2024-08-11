@@ -2,12 +2,15 @@ import json
 from core.utils.code_tools import code_tools
 from core.interpreter.ast_code_runner import ASTCodeRunner
 import re
+from .plan_template_manager import PlanTemplateManager
+
 
 class StockQuery:
     def __init__(self, llm_client, stock_data_provider):
         self.llm_client = llm_client
         self.stock_data_provider = stock_data_provider
         self.code_runner = ASTCodeRunner()
+        self.template_manager = PlanTemplateManager(llm_client)
 
     def query(self, query: str) -> str:
         plan = self._generate_plan(query)
@@ -16,12 +19,17 @@ class StockQuery:
 
     def _generate_plan(self, query: str) -> list:
         provider_description = self.stock_data_provider.get_self_description()
+        best_template = self.template_manager.get_best_template(query)
+        
         prompt = f"""
         根据以下查询要求生成一个执行计划：
         {query}
 
         可用的数据提供函数如下：
         {provider_description}
+
+        基于以下模板生成计划：
+        {best_template['template']}
 
         请生成一个包含多个步骤的执行计划。计划应该是一个 JSON 格式的数组，每个步骤应包含以下字段：
         1. "description": 需要完成的任务描述
@@ -30,17 +38,11 @@ class StockQuery:
         4. "input_vars": 该步骤需要的输入变量列表，每个变量包含 "name" 和 "description"
         5. "output_vars": 该步骤产生的输出变量列表，每个变量包含 "name" 和 "description"
 
-        确保计划涵盖以下方面：
-        1. 筛选相关股票
-        2. 获取必要的市场、财务、新闻或历史数据
-        3. 使用LLM进行数据分析和评分
-        4. 汇总结果并得出最终结论
-
         请返回一个格式化的 JSON 计划，并用 ```json ``` 包裹。
         """
         plan_response = self.llm_client.one_chat(prompt)
         return self._parse_plan(plan_response)
-
+    
     def _parse_plan(self, plan_response: str) -> list:
         json_pattern = r'```json\s*(.*?)\s*```'
         matches = re.findall(json_pattern, plan_response, re.DOTALL)
