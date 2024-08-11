@@ -1596,7 +1596,7 @@ class StockDataProvider:
         
         return stock_info_str
 
-    def get_realtime_stock_data(symbol: str) -> str:
+    def get_realtime_stock_data(self,symbol: str) -> str:
         """
         查询指定证券代码的最新行情数据，并将结果转换为格式化的字符串。
 
@@ -1614,6 +1614,35 @@ class StockDataProvider:
         stock_spot_str = "\n".join([f"{row['item']}: {row['value']}" for _, row in stock_spot_df.iterrows()])
         
         return stock_spot_str
+
+    def get_full_realtime_data(self) -> dict[str, str]:
+        """
+        获取并格式化当前证券代码列表的实时行情数据。
+
+        函数将获取证券代码的最新行情数据，并将其结果转换为格式化的字符串，存储在字典中。
+
+        返回:
+        dict[str, str]: 每个证券代码及其对应的最新行情数据的格式化字符串，包含代码、现价、涨幅、最高价、最低价、市盈率、成交量等信息。
+        """
+
+        # 获取实时行情数据
+        stock_spot_df = ak.stock_individual_spot_xq()
+
+        # 初始化一个字典来存储结果
+        formatted_data = {}
+
+        # 遍历实时数据的每一行
+        for _, row in stock_spot_df.iterrows():
+            symbol = row['symbol']
+            
+            # 将数据转换为可读的字符串格式
+            stock_spot_str = "\n".join([f"{item}: {value}" for item, value in row.items() if item != 'symbol'])
+
+            # 存储在字典中
+            formatted_data[symbol] = stock_spot_str
+
+        return formatted_data
+
 
     def get_stock_announcements(self,symbols: List[str], date: str = None) -> Dict[str, List[str]]:
         """

@@ -11,6 +11,7 @@ class StockQuery:
         self.stock_data_provider = stock_data_provider
         self.code_runner = ASTCodeRunner()
         self.template_manager = PlanTemplateManager(llm_client)
+        self.template_manager.load_templates_from_file("./json/stock_flows.md")
 
     def query(self, query: str) -> str:
         plan = self._generate_plan(query)
