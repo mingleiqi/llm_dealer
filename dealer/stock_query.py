@@ -41,7 +41,7 @@ class StockQuery:
         请生成一个包含多个步骤的执行计划。计划应该是一个 JSON 格式的数组，每个步骤应包含以下字段：
         1. "description": 需要完成的任务描述
         2. "pseudocode": 完成任务的伪代码
-        3. "tip_hlep": 这个步骤的提示，或者注意事项，比如 提示词中要求llm_client的输出为json，以便后续进行解析
+        3. "tip_hlep": 这个步骤注意事项，注意把模板中的需要的注意事项添加到这里。比如 提示词中要求llm_client的输出为json，以便后续进行解析
         4. "functions": 需要使用的数据提供函数列表
         5. "input_vars": 该步骤需要的输入变量列表，每个变量包含 "name" 和 "description"
         6. "output_vars": 该步骤产生的输出变量列表，每个变量包含 "name" 和 "description"
