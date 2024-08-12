@@ -3,7 +3,7 @@ from core.utils.code_tools import code_tools
 from core.interpreter.ast_code_runner import ASTCodeRunner
 import re
 from .plan_template_manager import PlanTemplateManager
-from core.utils.log import logger
+from .logger import logger
 
 
 class StockQuery:
