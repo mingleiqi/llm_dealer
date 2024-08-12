@@ -16,6 +16,10 @@ class PlanTemplateManager:
             4. 处理和分析数据
             5. 生成答案或见解
             6. 总结并呈现结果
+            
+            这些提示添加到所有tip_help之中
+            - code_tools.add(name,value)不允许添加重复的内容，在所有步骤中不允许重复，不能在循环内层中使用code_tools.add
+            - 对每支股票读取数据，如果需要在后续步骤使用，把这些数据存储于字典Dict[str,Any], 同一种类型只使用一次code_tools.add
             """
         }
 

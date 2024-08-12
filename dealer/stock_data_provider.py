@@ -1,6 +1,6 @@
 import logging
 import re
-from typing import Callable, List, Dict, Tuple, Optional, Union ,Literal
+from typing import Any, Callable, List, Dict, Tuple, Optional, Union ,Literal
 import numpy as np
 import pandas as pd
 from datetime import datetime, timedelta
@@ -1507,6 +1507,7 @@ class StockDataProvider:
     def get_market_news_300(self) -> List[str]:
         """
         获取财联社最新300条新闻，并将其格式化为字符串列表。
+        备注：这个函数一次获取的信息很多，无法让LLM一次处理，需要调用 summarizer_news(news,query) 来蒸馏提取内容
 
         返回值:
             List[str]: 每个元素是一个格式化的字符串，包含新闻的标题、内容、发布日期和发布时间。
@@ -2689,6 +2690,26 @@ class StockDataProvider:
         # 返回最终的摘要
         return " ".join(summaries)[:max_word]
 
+    def extract_json_from_text(self, text: str) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
+        """
+        从文本中提取JSON对象并返回字典或字典列表。
+
+        :param text: 包含JSON数据的字符串。
+        :return: 解析后的JSON对象（字典或字典列表）。
+        :raises JSONDecodeError: 如果未能找到有效的JSON数据。
+        """
+        json_match = re.search(r'```json\s*([\s\S]*?)\s*```', text)
+        if not json_match:
+            json_match = re.search(r'\{[\s\S]*\}', text)
+        if not json_match:
+            json_match = re.search(r'\[[\s\S]*\]', text)
+        
+        if json_match:
+            json_str = json_match.group(1) if '```json' in json_match.group() else json_match.group()
+            return json.loads(json_str)
+        
+        raise json.JSONDecodeError("No valid JSON found in the text", text, 0)
+    
     def get_self_description(self)->str:
         prompt="""
         适合用于选择股票范围的函数(只有get_code_name函数只返回名字和代码，其余函数均会返回数据，方便进行下一次筛选)：
@@ -2752,6 +2773,8 @@ class StockDataProvider:
             - get_market_news_300                       财联社新闻300条
         用于新闻数据处理
             - summarizer_news                           把新闻数据根据 query 的要求 总结出短摘要
+        用于解析llm_client的json输出
+            - extract_json_from_text                    从text中提取json,返回dict或者list
         
         """
         return prompt

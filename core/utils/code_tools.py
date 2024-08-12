@@ -61,7 +61,7 @@ class CodeTools:
                 print(f"Variable '{name}' already existed. Its value has been updated.")
             
             # Check if value is NOT one of the excluded types
-            if not isinstance(value, (str, int, float, bool, complex)):
+            if not isinstance(value, ( int, float, bool, complex)):
                 summary = self.summarizer.get_data_summary(value)
                 self.data[f"{name}_summary"] = summary
 
