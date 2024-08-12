@@ -41,16 +41,32 @@ class StockQuery:
         请生成一个包含多个步骤的执行计划。计划应该是一个 JSON 格式的数组，每个步骤应包含以下字段：
         1. "description": 需要完成的任务描述
         2. "pseudocode": 完成任务的伪代码
-        3. "tip_hlep": 这个步骤注意事项，注意把模板中的需要的注意事项添加到这里。比如 提示词中要求llm_client的输出为json，以便后续进行解析
+        3. "tip_help": 这个步骤的注意事项，应包括：
+        a) 模板中提到的针对该步骤的特定注意事项
+        b) 以下通用注意事项（应用于所有步骤）：
+            - code_tools.add(name,value)不允许添加重复的内容，在所有步骤中不允许重复，不能在循环内层中使用code_tools.add
+            - 对每支股票读取数据，如果需要在后续步骤使用，把这些数据存储于字典Dict[str,Any], 同一种类型只使用一次code_tools.add
         4. "functions": 需要使用的数据提供函数列表
         5. "input_vars": 该步骤需要的输入变量列表，每个变量包含 "name" 和 "description"
         6. "output_vars": 该步骤产生的输出变量列表，每个变量包含 "name" 和 "description"
+
+        请确保将模板中每个步骤的特定注意事项和通用注意事项都纳入到相应步骤的 tip_help 字段中。
+        请确保在生成计划时，特别是涉及 LLM 分析的步骤，包含详细的提示词构建指南和输出格式要求。
 
         请返回一个格式化的 JSON 计划，并用 ```json ``` 包裹。
         """
         plan_response = self.llm_client.one_chat(prompt)
         plan = self._parse_plan(plan_response)
         logger.info(f"执行计划生成完成，共 {len(plan)} 个步骤")
+        return plan
+
+    def _add_general_tips(self, plan: list) -> list:
+        general_tips = [
+            "code_tools.add(name,value)不允许添加重复的内容，在所有步骤中不允许重复，不能在循环内层中使用code_tools.add",
+            "对每支股票读取数据，如果需要在后续步骤使用，把这些数据存储于字典Dict[str,Any], 同一种类型只使用一次code_tools.add"
+        ]
+        for step in plan:
+            step['tip_help'] = step.get('tip_help', '') + ' ' + ' '.join(general_tips)
         return plan
     
     def _parse_plan(self, plan_response: str) -> list:
@@ -131,6 +147,42 @@ class StockQuery:
         6. 仅使用"stock_data_provider可用函数文档"中提供的函数来获取数据
         7. 确保使用code_tools.add(name, value)保存了需要输出的变量
         8. {"如果这是最后一个步骤，请确保将最终结果存储在 'output_result' 变量中，使用 code_tools.add('output_result', final_result)" if is_last_step else ""}
+
+        对于涉及 LLM 分析的步骤，请确保：
+        1. 构建详细的提示词，包含所有必要的数据和上下文信息。
+        2. 明确指定 LLM 输出应为 JSON 格式。
+        3. 在提示词中包含具体的评分标准、推荐理由长度限制和风险因素识别要求。
+        4. 添加错误处理机制，以防 LLM 返回非 JSON 格式的结果。
+        5. 下面是一个LLM分析的参考，请根据具体要求做改进和调整
+        ```python
+        def construct_prompt(stock_info, market_info):
+            return f\"\"\"
+            根据以下信息，分析股票的投资潜力：
+            
+            股票信息：
+            {{json.dumps(stock_info, indent=2)}}
+            
+            市场信息：
+            {{market_info}}
+            
+            请提供以下 JSON 格式的分析结果：
+            {{
+                "评分": <0-100的整数>,
+                "推荐理由": "<50字以内的推荐理由>",
+                "风险因素": ["<风险1>", "<风险2>", ...]
+            }}
+            \"\"\"
+
+        analysis_results = []
+        for stock in stocks:
+            prompt = construct_prompt(stock, market_info)
+            llm_response = llm_client.one_chat(prompt)
+            try:
+                analysis = json.loads(llm_response)
+                analysis_results.append(analysis)
+            except json.JSONDecodeError:
+                print(f"Error parsing LLM response for stock {{stock['code']}}")
+        ```
 
         请只提供 Python 代码，不需要其他解释。
         """
