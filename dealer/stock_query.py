@@ -88,7 +88,12 @@ class StockQuery:
         {functions_docs}
 
         请生成完整的、可执行的Python代码来完成这个步骤。确保代码可以直接运行，并遵循以下规则：
-        1. 在代码开头添加：from core.utils.code_tools import code_tools
+        1. 在代码开头添加：
+        ```python
+        from core.utils.code_tools import code_tools
+        stock_data_provider = code_tools["code_tools"]
+        llm_client = code_tools["llm_client"]
+        ```
         2. 使用 code_tools[name] 来读取输入变量
         3. 使用 code_tools.add(name, value) 来存储输出变量
         4. 使用 stock_data_provider 来调用数据提供函数

@@ -8,11 +8,9 @@ def test():
     llm = SimpleDeepSeekClient()
     data = StockDataProvider(llm)
     query = StockQuery(llm,data)
-    q = "科技股"
-    selected_stocks = data.select_stocks_by_concept_board_query(q)
-    print(selected_stocks)
-    #result = query.query("查询过去一个月涨幅超过2%的科技股")
-    #print(result)
+
+    result = query.query("从百度热榜挑选5支值得短线关注的股票")
+    print(result)
 
 
 if __name__ == "__main__":

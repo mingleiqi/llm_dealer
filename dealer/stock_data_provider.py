@@ -1643,7 +1643,6 @@ class StockDataProvider:
 
         return formatted_data
 
-
     def get_stock_announcements(self,symbols: List[str], date: str = None) -> Dict[str, List[str]]:
         """
         获取指定日期内指定股票代码的公告信息。
@@ -1783,6 +1782,7 @@ class StockDataProvider:
     def summarize_historical_index_data(self, index_symbols: List[str]) -> dict:
         """
         汇总多个指数的历史数据，并生成描述性的字符串。
+        备注：上证指数：000001;上证50:000016;上证300：000300；中证1000：000852；中证500：000905
 
         输入参数:
             index_symbols: List[str] 指数代码列表
@@ -2695,11 +2695,13 @@ class StockDataProvider:
             - select_stock_by_query                     使用最新行情数据，用自然语言进行筛选，返回值包含股票当前的数据信息
             - get_index_components                      输入指数代码，获得成分列表，返回值只有名字和代码
             - get_code_name                             全部股票代码的字典，返回值只有名字和代码
+            - get_full_realtime_data                    获取全部股票目前的行情，返回Dict[Symnol,行情描述字符串]
             - get_concept_board_components              用自然语言进行概念板块选股，query只能针对板块的名字和板块的数据，返回值包含股票当前的数据信息
             - select_stocks_by_industry_board_query     用自然语言进行行业板块选股,query只能针对板块的名字和板块的数据，返回值包含股票当前的数据信息
-            - get_rebound_stock_pool                    炸板股票池，返回值包含股票数据
-            - get_new_stock_pool                        新股股票池，返回值包含股票数据
-            - get_strong_stock_pool                     强势股票池，返回值包含股票数据
+            - get_rebound_stock_pool                    炸板股票池，返回值包含股票数据.返回Dict[Symbol,行情描述字符串]
+            - get_new_stock_pool                        新股股票池，返回值包含股票数据.返回Dict[Symbol,行情描述字符串]
+            - get_strong_stock_pool                     强势股票池，返回值包含股票数据.返回Dict[Symbol,行情描述字符串]
+            - get_stock_comments_summary                千股千评数据.返回Dict[Symbol,行情描述字符串]。包括最新价、涨跌幅、换手率、市盈率、主力成本、机构参与度、综合得分、上升、目前排名、关注指数等数据
             - get_market_anomaly                        盘口异动，包括:'火箭发射', '快速反弹', '大笔买入', '封涨停板', '打开跌停板', '有大买盘', '竞价上涨', '高开5日线', '向上缺口', '60日新高', '60日大幅上涨', '加速下跌', '高台跳水', '大笔卖出', '封跌停板', '打开涨停板', '有大卖盘', '竞价下跌', '低开5日线', '向下缺口', '60日新低', '60日大幅下跌'
             - get_active_a_stock_stats                  活跃个股，查询周期：'近一月', '近三月', '近六月', '近一年'。，返回值包含股票数据
             - get_daily_lhb_details                     龙虎榜，返回值包含股票数据
@@ -2726,6 +2728,7 @@ class StockDataProvider:
             - get_stock_info                             个股信息
             - get_stock_a_indicators                     个股指标
             - get_baidu_analysis_summary                  百度个股分析
+            - get_stock_news                              个股新闻
         用于代码查询的函数
             - search_index_code                         通过名称模糊查询指数代码
             - search_stock_code                         通过名称模糊查询股票代码
