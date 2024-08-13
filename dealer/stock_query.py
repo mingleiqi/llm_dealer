@@ -89,15 +89,15 @@ class StockQuery:
         matches = re.findall(code_pattern, response, re.DOTALL)
         return matches[0] if matches else response
 
+
     def _execute_plan(self, plan: list, query: str) -> str:
         for i, step in enumerate(plan, 1):
             logger.info(f"执行步骤 {i}/{len(plan)}: {step['description']}")
-            step_code = self._generate_step_code(step, query,i,len(plan))
-            self._execute_code(step_code)
+            step_code, prompt = self._generate_step_code(step, query, i, len(plan))
+            self._execute_code(step_code, prompt)
 
         logger.info("所有步骤执行完成")
         
-        # 获取最后一个步骤的结果
         if 'output_result' in code_tools:
             result = code_tools['output_result']
             logger.info(f"查询结果: {result}")
@@ -106,12 +106,13 @@ class StockQuery:
             logger.warning("未找到查询结果")
             return "未能获取查询结果"
 
-    def _generate_step_code(self, step: dict, query: str,step_number:int,total_steps:int) -> str:
+
+    def _generate_step_code(self, step: dict, query: str, step_number: int, total_steps: int) -> tuple:
         logger.info("正在生成步骤代码...")
         is_last_step = step_number == total_steps
         functions_docs = self._get_functions_docs(step['functions'])
 
-        sumaries=[code_tools[f"{item['name']}_summary"] for item in step["input_vars"] ]
+        summaries = [code_tools[f"{item['name']}_summary"] for item in step["input_vars"] if f"{item['name']}_summary" in code_tools]
         prompt = f"""
         根据以下步骤信息和函数文档，生成可执行的Python代码：
 
@@ -128,7 +129,7 @@ class StockQuery:
         {json.dumps(step['output_vars'], indent=2)}
 
         输出变量的结构描述：
-        {sumaries}
+        {summaries}
 
         stock_data_provider可用函数文档：
         {functions_docs}
@@ -153,61 +154,43 @@ class StockQuery:
         2. 明确指定 LLM 输出应为 JSON 格式。
         3. 在提示词中包含具体的评分标准、推荐理由长度限制和风险因素识别要求。
         4. 添加错误处理机制，以防 LLM 返回非 JSON 格式的结果。
-        5. 下面是一个LLM分析的参考，- 根据具体的查询需求，动态调整 LLM 提示词：
-            * 解析用户查询，提取关键词和投资目标
-            * 在提示词中强调这些特定需求，要求 LLM 重点关注相关方面
-            * 在提示词中要求以特定json格式输出内容，便于后续解析
-        ```python
-        def construct_prompt(stock_info, market_info):
-            return f\"\"\"
-            根据以下信息，分析股票的投资潜力：
-            
-            股票信息：
-            {{json.dumps(stock_info, indent=2)}}
-            
-            市场信息：
-            {{market_info}}
-            
-            请提供以下 JSON 格式的分析结果：
-            {{
-                "评分": <0-100的整数>,
-                "推荐理由": "<50字以内的推荐理由>",
-                "风险因素": ["<风险1>", "<风险2>", ...]
-            }}
-            \"\"\"
-
-        analysis_results = []
-        for stock in stocks:
-            prompt = construct_prompt(stock, market_info)
-            llm_response = llm_client.one_chat(prompt)
-            try:
-                analysis = json.loads(llm_response)
-                analysis_results.append(analysis)
-            except json.JSONDecodeError:
-                print(f"Error parsing LLM response for stock {{stock['code']}}")
-        ```
 
         请只提供 Python 代码，不需要其他解释。
         """
         code = self.llm_client.one_chat(prompt)
+        logger.info(code)
         logger.info("步骤代码生成完成")
-        return self._extract_code(code)
+        return self._extract_code(code), prompt
 
-    def _execute_code(self, code: str) -> None:
-        try:
-            logger.info("正在执行代码...")
-            result = self.code_runner.run(code)
-            if result['error']:
-                logger.warning("代码执行出错，正在修复...")
-                fixed_code = self._fix_runtime_error(code, result['error'])
-                self.code_runner.run(fixed_code)
-                logger.info("错误修复完成，代码重新执行成功")
-            else:
-                logger.info("代码执行成功")
-        except Exception as e:
-            logger.error(f"执行代码时发生错误: {str(e)}")
+    def _execute_code(self, code: str, prompt: str, max_attempts: int = 3) -> None:
+        logger.info("正在执行代码...")
+        attempt = 1
+        while attempt <= max_attempts:
+            try:
+                result = self.code_runner.run(code)
+                if result['error']:
+                    if attempt < max_attempts:
+                        logger.warning(f"代码执行出错（尝试 {attempt}/{max_attempts}），正在修复...")
+                        code = self._fix_runtime_error(code, result['error'], prompt)
+                        attempt += 1
+                    else:
+                        logger.error(f"代码执行失败，已达到最大尝试次数 ({max_attempts})。最后一次错误: {result['error']}")
+                        return
+                else:
+                    logger.info(f"代码执行成功（尝试 {attempt}/{max_attempts}）")
+                    return
+            except Exception as e:
+                if attempt < max_attempts:
+                    logger.warning(f"执行代码时发生异常（尝试 {attempt}/{max_attempts}）: {str(e)}，正在尝试修复...")
+                    code = self._fix_runtime_error(code, str(e), prompt)
+                    attempt += 1
+                else:
+                    logger.error(f"代码执行失败，已达到最大尝试次数 ({max_attempts})。最后一次错误: {str(e)}")
+                    return
 
-    def _fix_runtime_error(self, code: str, error: str) -> str:
+        logger.error(f"代码执行失败，已达到最大尝试次数 ({max_attempts})。")
+
+    def _fix_runtime_error(self, code: str, error: str, prompt: str) -> str:
         logger.info("正在修复运行时错误...")
         fix_prompt = f"""
         执行以下代码时发生了错误：
@@ -217,14 +200,11 @@ class StockQuery:
         错误信息：
         {error}
 
+        原始提示词：
+        {prompt}
+
         请修正代码以解决这个错误。请只提供修正后的完整代码，不需要其他解释。
-        确保代码遵循以下规则：
-        1. 在代码开头添加：from core.utils.code_tools import code_tools
-        2. 使用 code_tools[name] 来读取输入变量
-        3. 使用 code_tools.add(name, value) 来存储输出变量
-        4. 使用 stock_data_provider 来调用数据提供函数
-        5. 使用 llm_client.one_chat() 来调用 LLM 进行分析
-        6. 如果这是最后一个步骤，请确保将最终结果存储在 'output_result' 变量中，使用 code_tools.add('output_result', final_result)
+        确保代码遵循原始提示词中的所有要求和规则。
         """
         fixed_code = self.llm_client.one_chat(fix_prompt)
         logger.info("错误修复代码生成完成")
