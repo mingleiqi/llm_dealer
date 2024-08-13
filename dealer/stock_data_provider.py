@@ -586,7 +586,7 @@ class StockDataProvider:
         输入参数:
             symbol (str): 股票代码
             
-        返回值:
+        返回值 字符串类型:
             一个字符串，包含以下信息的描述：
             - 市盈率
             - 市盈率TTM
@@ -2764,10 +2764,10 @@ class StockDataProvider:
             - get_latest_trading_date                    九点半之前，返回今天之前的交易日，九点半之后返回包括今天在内的最近交易日
             - get_previous_trading_date                  永远返回不包含今天的交易日
         用于获取个股信息的函数
-            - get_main_business_description              主营业务
-            - get_stock_info                             个股信息
-            - get_stock_a_indicators                     个股指标
-            - get_baidu_analysis_summary                  百度个股分析
+            - get_main_business_description              主营业务，返回包含主营业务信息的字符串
+            - get_stock_info                             个股信息，返回个股指标字符串
+            - get_stock_a_indicators                     个股指标,返回包含指标信息的字符串
+            - get_baidu_analysis_summary                  百度个股分析，返回包含分析信息的字符串
             - get_stock_news                              个股新闻
             - get_news_updates                            获取某个时间以后的个股新闻
         用于代码查询的函数

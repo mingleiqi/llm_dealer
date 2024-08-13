@@ -46,12 +46,18 @@ class StockQuery:
         b) 以下通用注意事项（应用于所有步骤）：
             - code_tools.add(name,value)不允许添加重复的内容，在所有步骤中不允许重复，不能在循环内层中使用code_tools.add
             - 对每支股票读取数据，如果需要在后续步骤使用，把这些数据存储于字典Dict[str,Any], 同一种类型只使用一次code_tools.add
-        4. "functions": 需要使用的数据提供函数列表
+        4. "functions": 需要使用的数据提供函数列表,只列"可用的数据提供函数"提及的函数
         5. "input_vars": 该步骤需要的输入变量列表，每个变量包含 "name" 和 "description"
         6. "output_vars": 该步骤产生的输出变量列表，每个变量包含 "name" 和 "description"
 
         请确保将模板中每个步骤的特定注意事项和通用注意事项都纳入到相应步骤的 tip_help 字段中。
+        确保生成计划的时候不要丢失模板提供输入输出细节，避免后续步骤生成代码时出错
         请确保在生成计划时，特别是涉及 LLM 分析的步骤，包含详细的提示词构建指南和输出格式要求。
+
+        对于涉及 LLM 分析的步骤，请确保：
+        1. 构建详细的提示词，包含所有必要的数据和上下文信息。
+        2. 提示词中明确指定 LLM 输出应为 JSON 格式。
+        3. 提示词中包含了"模板"中所要求的内容
 
         请返回一个格式化的 JSON 计划，并用 ```json ``` 包裹。
         """
@@ -110,7 +116,7 @@ class StockQuery:
         is_last_step = step_number == total_steps
         functions_docs = self._get_functions_docs(step['functions'])
 
-        summaries = [code_tools[f"{item['name']}_summary"] for item in step["input_vars"] if f"{item['name']}_summary" in code_tools]
+        summaries = [f"{item['name']}:" + code_tools[f"{item['name']}_summary"] for item in step["input_vars"] if f"{item['name']}_summary" in code_tools]
         prompt = f"""
         根据以下步骤信息和函数文档，生成可执行的Python代码：
 
@@ -145,13 +151,14 @@ class StockQuery:
         5. 使用 llm_client.one_chat(prompt) 来调用 LLM 进行分析
         6. 仅使用"stock_data_provider可用函数文档"中提供的函数来获取数据
         7. 确保使用code_tools.add(name, value)保存了需要输出的变量
-        8. {"如果这是最后一个步骤，请确保将最终结果存储在 'output_result' 变量中，使用 code_tools.add('output_result', final_result)" if is_last_step else ""}
+        8. 不要使用try expect 代码块处理错误，因为处理错误会导致代码修复失败
+        9. {"如果这是最后一个步骤，请确保将最终结果存储在 'output_result' 变量中，使用 code_tools.add('output_result', final_result)" if is_last_step else ""}
 
         对于涉及 LLM 分析的步骤，请确保：
         1. 构建详细的提示词，包含所有必要的数据和上下文信息。
         2. 明确指定 LLM 输出应为 JSON 格式。
         3. 在提示词中包含具体的评分标准、推荐理由长度限制和风险因素识别要求。
-        4. 添加错误处理机制，以防 LLM 返回非 JSON 格式的结果。
+        
 
         请只提供 Python 代码，不需要其他解释。
         """

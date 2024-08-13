@@ -278,7 +278,7 @@ class BaiduFinanceAPI:
                 calendar_list.append(event_item)
         return calendar_list
 
-    def fetch_hotrank(self, day, hour=7, pn=0, rn=100, market='all', type='hour'):
+    def fetch_hotrank(self, day, hour=7, pn=0, rn=100, market='ab', type='hour'):
         """
         获取指定日期和时间的热门股票排名。
 
@@ -287,7 +287,7 @@ class BaiduFinanceAPI:
             hour (str): 小时，格式为 'HH'。
             pn (int): 页码，默认值为0。
             rn (int): 每页显示的股票数量，默认值为100。
-            market (str): 市场类型，默认为 'all'。
+            market (str): 市场类型，默认为 'ab'。
             type (str): 排行榜类型，默认为 'hour'。
 
         Returns:
@@ -331,7 +331,7 @@ class BaiduFinanceAPI:
                 hotrank_list.append(rank_item)
         return hotrank_list
 
-    def fetch_recommendation_list(self, day, hour=7, pn=0, rn=100, market='all', type='hour'):
+    def fetch_recommendation_list(self, day, hour=7, pn=0, rn=100, market='ab', type='hour'):
         """
         获取指定日期和时间的股票推荐列表。
 
@@ -340,7 +340,7 @@ class BaiduFinanceAPI:
             hour (str): 小时，格式为 'HH'。
             pn (int): 页码，默认值为0。
             rn (int): 每页显示的股票数量，默认值为100。
-            market (str): 市场类型，默认为 'all'。
+            market (str): 市场类型，默认为 'ab'。
             type (str): 推荐类型，默认为 'hour'。
 
         Returns:

@@ -49,17 +49,39 @@
    - 使用 stock_market_desc 获取市场整体描述
    - 使用 get_market_news_300 获取市场新闻，然后用 summarizer_news 提取关键信息
    - 使用 summarize_historical_index_data 获取上证指数的近期走势
+   输出:
+   - hot_stocks: List[str] 热门股票代码列表
+   - market_overview: str 市场整体描述
+   - market_news_summary: str 市场新闻摘要
+   - index_trend: str 上证指数近期走势
 
 2. 分析热门股票
+   输入: hot_stocks
    对每只热门股票进行以下分析：
    - 使用 get_stock_info 和 get_stock_a_indicators 获取股票详细信息
    - 使用 summarize_historical_data 获取股票近期历史数据
    - 使用 get_baidu_analysis_summary 获取百度分析摘要
+   - 使用 get_stock_comments_summary 获取股票评论摘要
+   输出:
+   - stock_analysis: Dict[str, Dict] 股票分析结果字典，结构如下：
+     {
+       "stock_code": {
+         "name": str,
+         "info": str,  # 股票详细信息
+         "indicators": str,  # 股票指标
+         "history": str,  # 历史数据摘要
+         "baidu_analysis": str,  # 百度分析摘要
+         "comments_summary": str  # 股票评论摘要
+       },
+       ...
+     }
 
 3. 短线潜力评估
+   输入: stock_analysis, market_overview, market_news_summary, index_trend
    对每只热门股票进行LLM分析：
    - 生成评估提示词，包含：
-     - 股票信息、市场信息、行业热点
+     - 股票信息（从stock_analysis中获取）
+     - 市场信息（使用market_overview, market_news_summary, index_trend）
      - 短线投资特定要求（如对市场情绪、热点事件的敏感性）
      - 要求返回JSON格式，包含：
        - "code": 股票代码
@@ -67,10 +89,26 @@
        - "score": 0-100的整数评分
        - "reason": 50字以内的推荐理由
        - "risks": 列出关键风险点（字符串列表）
+       - "volume": 从股票信息中提取的成交量（数值）
+       - "attention": 从评论摘要中提取的关注指数（数值）
    - 使用 llm_client.one_chat(prompt) 进行评估
    - 解析LLM返回的JSON结果
+   输出:
+   - stock_evaluations: Dict[str, Dict] 股票评估结果字典，结构如下：
+     {
+       "stock_code": {
+         "name": str,
+         "score": int,
+         "reason": str,
+         "risks": List[str],
+         "volume": float,
+         "attention": float
+       },
+       ...
+     }
 
 4. 筛选和排序
+   输入: stock_evaluations
    - 根据短线潜力评分、成交量、市场关注度等因素对股票进行综合排序
    - 创建一个包含所有必要信息的字典列表，每个字典包含：
      - "code": 股票代码
@@ -82,10 +120,12 @@
      - "attention": 市场关注度
    - 根据综合因素对这个列表进行排序
    - 选择排名靠前的股票（如前5只）作为推荐
-   - 将这个推荐列表存储为 'recommended_stocks'
+   输出:
+   - recommended_stocks: List[Dict] 推荐股票列表
 
 5. 生成推荐列表和输出结果
-   - 使用存储在 'recommended_stocks' 中的数据生成结构化报告
+   输入: recommended_stocks, market_overview, market_news_summary, index_trend
+   - 使用输入数据生成结构化报告
    - 报告应包含：
      - 市场整体情况概述（包括热点行业和事件）
      - 推荐的股票列表，每只股票包含：
@@ -95,11 +135,11 @@
        - 风险因素
        - 需关注的关键指标或事件（如成交量、市场关注度）
      - 整体风险提示
-   - 将生成的报告存储为 'output_result'
+   输出:
+   - output_result: str 最终的推荐报告
 
 注意事项：
-- 确保每个步骤的输出变量名称一致，特别是第4步的 'recommended_stocks' 和第5步的 'output_result'
-- 在第4步中，明确存储所有第5步需要的数据
+- 确保每个步骤的输出变量名称一致，并使用code_tools.add()存储
 - LLM分析时，确保考虑短线投资特性，如对市场情绪、热点事件的敏感性
 - 评估应特别注意股票的流动性、波动性和与市场热点的相关性
 - 推荐应基于综合因素，包括技术面、消息面和资金面
