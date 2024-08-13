@@ -2769,6 +2769,7 @@ class StockDataProvider:
             - get_stock_a_indicators                     个股指标
             - get_baidu_analysis_summary                  百度个股分析
             - get_stock_news                              个股新闻
+            - get_news_updates                            获取某个时间以后的个股新闻
         用于代码查询的函数
             - search_index_code                         通过名称模糊查询指数代码
             - search_stock_code                         通过名称模糊查询股票代码
