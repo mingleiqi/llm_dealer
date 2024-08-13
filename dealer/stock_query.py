@@ -105,8 +105,30 @@ class StockQuery:
         
         if 'output_result' in code_tools:
             result = code_tools['output_result']
-            logger.info(f"查询结果: {result}")
-            return result
+            logger.info(f"原始查询结果: {result}")
+            
+            # 将结果转换为Markdown格式
+            markdown_prompt = f"""
+            请将以下查询结果转换为清晰、结构化的Markdown格式：
+
+            查询: {query}
+
+            结果:
+            {result}
+
+            请确保:
+            1. 使用适当的Markdown标记（如标题、列表、表格等）来组织信息。
+            2. 保留所有重要信息，但以更易读的方式呈现。
+            3. 如果结果中包含数字数据，考虑使用表格形式展示。
+            4. 为主要部分添加简短的解释或总结。
+            5. 如果有多个部分，使用适当的分隔和标题。
+
+            请直接返回Markdown格式的文本，无需其他解释。
+            """
+            
+            markdown_result = self.llm_client.one_chat(markdown_prompt)
+            logger.info(f"Markdown格式的查询结果: {markdown_result}")
+            return markdown_result
         else:
             logger.warning("未找到查询结果")
             return "未能获取查询结果"
