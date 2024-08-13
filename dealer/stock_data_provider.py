@@ -2641,6 +2641,25 @@ class StockDataProvider:
         return result
 
     def summarizer_news(self, news_source: list[str], query: str="总结市场热点，市场机会", max_word: int = 240) -> str:
+        """
+        对给定的新闻列表进行摘要，根据指定的查询要求生成一个简洁的总结。
+
+        这个函数首先将新闻文本分成较小的块，然后对每个块进行摘要。如果摘要的总长度超过指定的最大字数，
+        它会继续进行迭代摘要，直到得到一个不超过最大字数的最终摘要。
+
+        参数:
+        news_source (list[str]): 包含新闻文本的字符串列表。每个字符串应该是一条完整的新闻。
+        query (str, 可选): 指定摘要的重点或方向。默认为"总结市场热点，市场机会"。
+        max_word (int, 可选): 最终摘要的最大字数。默认为240。
+
+        返回:
+        str: 不超过指定最大字数的新闻摘要。
+
+        示例:
+        >>> news = ["今日股市大涨，科技股领涨。", "央行宣布降息，刺激经济增长。", "新能源车企发布新品，股价应声上涨。"]
+        >>> summary = stock_data_provider.summarizer_news(news, "分析今日股市表现", 100)
+        >>> print(summary)
+        """
         def chunk_text(text_list: list[str], max_chars: int = 10000) -> list[str]:
             chunks = []
             current_chunk = ""
