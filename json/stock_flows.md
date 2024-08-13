@@ -48,7 +48,7 @@
    - 使用 get_baidu_hotrank 获取百度热门股票列表
    - 使用 stock_market_desc 获取市场整体描述
    - 使用 get_market_news_300 获取市场新闻，然后用 summarizer_news 提取关键信息
-   - 使用 summarize_historical_index_data 获取主要指数的近期走势
+   - 使用 summarize_historical_index_data 获取上证指数的近期走势
 
 2. 分析热门股票
    对每只热门股票进行以下分析：
