@@ -160,7 +160,7 @@ class StockQuery:
         logger.info("步骤代码生成完成")
         return self._extract_code(code), prompt
 
-    def _execute_code(self, code: str, prompt: str, max_attempts: int = 3) -> None:
+    def _execute_code(self, code: str, prompt: str, max_attempts: int = 5) -> None:
         logger.info("正在执行代码...")
         attempt = 1
         while attempt <= max_attempts:
