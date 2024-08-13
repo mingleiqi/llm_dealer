@@ -2640,7 +2640,7 @@ class StockDataProvider:
         
         return result
 
-    def summarizer_news(self, news_source: list[str], query: str="总结市场热点，市场机会", max_word: int = 240) -> str:
+    def summarizer_news(self, news_source: list[str], query: str="总结市场热点,市场机会,市场风险", max_word: int = 240) -> str:
         """
         对给定的新闻列表进行摘要，根据指定的查询要求生成一个简洁的总结。
 
@@ -2649,7 +2649,7 @@ class StockDataProvider:
 
         参数:
         news_source (list[str]): 包含新闻文本的字符串列表。每个字符串应该是一条完整的新闻。
-        query (str, 可选): 指定摘要的重点或方向。默认为"总结市场热点，市场机会"。
+        query (str, 可选): 指定摘要的重点或方向。默认为"总结市场热点,市场机会,市场风险"。
         max_word (int, 可选): 最终摘要的最大字数。默认为240。
 
         返回:

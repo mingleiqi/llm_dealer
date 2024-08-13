@@ -55,7 +55,6 @@
    - 使用 get_stock_info 和 get_stock_a_indicators 获取股票详细信息
    - 使用 summarize_historical_data 获取股票近期历史数据
    - 使用 get_baidu_analysis_summary 获取百度分析摘要
-   - 使用 get_stock_news 获取股票最新新闻，然后用 summarizer_news 提取关键信息
 
 3. 短线潜力评估
    对每只热门股票进行LLM分析：

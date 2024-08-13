@@ -89,7 +89,6 @@ class StockQuery:
         matches = re.findall(code_pattern, response, re.DOTALL)
         return matches[0] if matches else response
 
-
     def _execute_plan(self, plan: list, query: str) -> str:
         for i, step in enumerate(plan, 1):
             logger.info(f"执行步骤 {i}/{len(plan)}: {step['description']}")
@@ -105,7 +104,6 @@ class StockQuery:
         else:
             logger.warning("未找到查询结果")
             return "未能获取查询结果"
-
 
     def _generate_step_code(self, step: dict, query: str, step_number: int, total_steps: int) -> tuple:
         logger.info("正在生成步骤代码...")
