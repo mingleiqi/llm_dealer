@@ -61,7 +61,6 @@
    - 使用 get_stock_info 和 get_stock_a_indicators 获取股票详细信息
    - 使用 summarize_historical_data 获取股票近期历史数据
    - 使用 get_baidu_analysis_summary 获取百度分析摘要
-   - 使用 get_stock_comments_summary 获取股票评论摘要
    输出:
    - stock_analysis: Dict[str, Dict] 股票分析结果字典，结构如下：
      {
@@ -71,7 +70,6 @@
          "indicators": str,  # 股票指标
          "history": str,  # 历史数据摘要
          "baidu_analysis": str,  # 百度分析摘要
-         "comments_summary": str  # 股票评论摘要
        },
        ...
      }
@@ -182,7 +180,6 @@
    - 对每只股票：
      - 使用 get_baidu_analysis_summary 获取百度分析摘要
      - 使用 summarize_historical_data 获取简要的历史数据摘要
-     - 使用 get_stock_comments_summary 获取股票评论摘要
    输出:
    - market_summary: str 市场整体描述
    - market_news_summary: str 市场新闻摘要
@@ -191,7 +188,6 @@
        "stock_code": {
          "baidu_analysis": str,  # 百度分析摘要
          "history": str,  # 历史数据摘要
-         "comments_summary": str  # 股票评论摘要
        },
        ...
      }
