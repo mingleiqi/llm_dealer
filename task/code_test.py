@@ -1,5 +1,24 @@
 
 
+def _format_result(llm_client, result: str) ->str:
+    markdown_prompt = f"""
+    请将以下查询结果转换为清晰、结构化的Markdown格式：
+    结果:
+    {result}
+    请确保:
+    1. 使用适当的Markdown标记（如标题、列表、表格等）来组织信息。
+    2. 保留所有重要信息，但以更易读的方式呈现。
+    3. 如果结果中包含数字数据，考虑使用表格形式展示。
+    4. 为主要部分添加简短的解释或总结。
+    5. 如果有多个部分，使用适当的分隔和标题。
+    请直接返回Markdown格式的文本，无需其他解释。
+    """
+    
+    
+    markdown_result = ""
+    markdown_result = llm_client.one_chat(markdown_prompt)
+    return markdown_result
+
 def runner():
     from core.utils.code_tools import code_tools
     from core.llms.simple_deep_seek_client import SimpleDeepSeekClient
@@ -76,6 +95,5 @@ def runner():
     整体风险提示：短线投资具有高风险性，建议用户进行进一步的研究和谨慎决策"""
 
     code_tools.add('output_result', final_result)
-    markdown_prompt = f"请将以下文本转换为 Markdown 格式：\n\n{final_result}\n\n结果以```markdown  ```包裹，不要添加任何解释"
-    markdown_result = llm_client.one_chat(markdown_prompt)
+    markdown_result = _format_result(llm_client,final_result)
     print(markdown_result)
