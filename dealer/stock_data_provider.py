@@ -1479,7 +1479,7 @@ class StockDataProvider:
         如果根据代码获取股票名称可以这样：
         name = stock_data_provider.get_code_name()[symbol]
         """
-        if self.code_name_list:
+        if self.code_name_list and len(self.code_name_list)>0:
             return self.code_name_list  
 
         spot = ak.stock_info_a_code_name()
