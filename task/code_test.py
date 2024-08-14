@@ -44,14 +44,12 @@ def runner():
         indicators = stock_data_provider.get_stock_a_indicators(stock)
         history = stock_data_provider.summarize_historical_data([stock])[stock]
         baidu_analysis = stock_data_provider.get_baidu_analysis_summary(stock)
-        comments_summary = stock_data_provider.get_stock_comments_summary()[stock]
         stock_analysis[stock] = {
             'name': stock_data_provider.get_code_name()[stock],
             'info': info,
             'indicators': indicators,
             'history': history,
-            'baidu_analysis': baidu_analysis,
-            'comments_summary': comments_summary
+            'baidu_analysis': baidu_analysis
         }
 
     # Step 3: 短线潜力评估
@@ -62,7 +60,6 @@ def runner():
         - 股票指标：{stock_data['indicators']}
         - 历史数据摘要：{stock_data['history']}
         - 百度分析摘要：{stock_data['baidu_analysis']}
-        - 股票评论摘要：{stock_data['comments_summary']}
         - 市场信息：{market_overview}
         - 市场新闻摘要：{market_news_summary}
         - 上证指数近期走势：{index_trend}
