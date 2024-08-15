@@ -7,10 +7,10 @@ import os
 import base64
 from PIL import Image
 import io
-from ..utils.retry import retry
 from ._llm_api_client import LLMApiClient
 from ..utils.config_setting import Config
 from ..utils.handle_max_tokens import handle_max_tokens
+from tenacity import retry, wait_fixed,retry_if_exception
 
 class SimpleClaudeAwsClient(LLMApiClient):
     def __init__(self, 
@@ -280,7 +280,8 @@ class SimpleClaudeAwsClient(LLMApiClient):
             return f"*首轮消息：*{assistant_message}\n*使用工具：*{[tool_call.function.name for tool_call in tool_calls]}\n*最终结果：*{final_assistant_message}"
         else:
             return assistant_message
-
+        
+    @retry(retry=retry_if_exception(),wait=wait_fixed(5))
     def one_chat(self, message: Union[str, List[Union[str, Any]]], max_tokens: Optional[ int ]= None, is_stream: bool = False) -> Union[str, Iterator[str]]:
         messages = [{"role": "user", "content": message}] if isinstance(message, str) else message
         response = self.client.messages.create(

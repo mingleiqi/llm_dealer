@@ -1827,21 +1827,11 @@ class StockDataProvider:
         return ak.stock_info_global_em()
 
     def summarize_historical_data(self, symbols: List[str]) -> dict:
-        """
-        汇总多个股票的历史数据。 参数symbols: List[str] 返回Dict[symbol,str]
-        
-        输入参数:
-            symbols: List[str] 股票代码列表
-            
-        返回值:
-            一个字典，键是股票代码，值是描述性的字符串。
-        """
         summary_dict = {}
         end_date = datetime.now().strftime("%Y%m%d")
         start_date = (datetime.now() - timedelta(days=180)).strftime("%Y%m%d")
 
         for symbol in symbols:
-            # 检查缓存
             if symbol in self.historical_data_cache:
                 df = self.historical_data_cache[symbol]
             else:
@@ -1852,7 +1842,7 @@ class StockDataProvider:
                 summary_dict[symbol] = "未找到数据"
                 continue
 
-            # 计算常用技术指标
+            # 保留原有的指标计算
             df['MA20'] = ta.trend.sma_indicator(df['收盘'], window=20)
             df['MA50'] = ta.trend.sma_indicator(df['收盘'], window=50)
             df['RSI'] = ta.momentum.rsi(df['收盘'], window=14)
@@ -1863,7 +1853,24 @@ class StockDataProvider:
             df['BB_upper'] = bb.bollinger_hband()
             df['BB_lower'] = bb.bollinger_lband()
 
-            # 获取数据统计
+            # 新增指标
+            df['ATR'] = ta.volatility.average_true_range(df['最高'], df['最低'], df['收盘'], window=14)
+            
+            stoch = ta.momentum.StochasticOscillator(df['最高'], df['最低'], df['收盘'])
+            df['Stoch_K'] = stoch.stoch()
+            df['Stoch_D'] = stoch.stoch_signal()
+            
+            df['RSI_9'] = ta.momentum.rsi(df['收盘'], window=9)
+            
+            df['OBV'] = ta.volume.on_balance_volume(df['收盘'], df['成交量'])
+            
+            df['Momentum'] = ta.momentum.roc(df['收盘'], window=10)
+            
+            df['ADL'] = ta.volume.acc_dist_index(df['最高'], df['最低'], df['收盘'], df['成交量'])
+            
+            df['Williams_R'] = ta.momentum.williams_r(high=df['最高'], low=df['最低'], close=df['收盘'], lbp=14)
+
+            # 获取数据统计（包括新增指标）
             latest_close = df['收盘'].iloc[-1]
             highest_close = df['收盘'].max()
             lowest_close = df['收盘'].min()
@@ -1873,21 +1880,37 @@ class StockDataProvider:
             latest_macd_signal = df['MACD_signal'].iloc[-1]
             bb_upper = df['BB_upper'].iloc[-1]
             bb_lower = df['BB_lower'].iloc[-1]
+            latest_atr = df['ATR'].iloc[-1]
+            latest_stoch_k = df['Stoch_K'].iloc[-1]
+            latest_stoch_d = df['Stoch_D'].iloc[-1]
+            latest_rsi_9 = df['RSI_9'].iloc[-1]
+            latest_obv = df['OBV'].iloc[-1]
+            latest_momentum = df['Momentum'].iloc[-1]
+            latest_adl = df['ADL'].iloc[-1]
+            latest_williams_r = df['Williams_R'].iloc[-1]
 
             # 生成描述性的字符串
             description = (
                 f"股票代码: {symbol}\n"
-                f"最新收盘价: {latest_close}\n"
-                f"最近半年内最高收盘价: {highest_close}\n"
-                f"最近半年内最低收盘价: {lowest_close}\n"
-                f"最近半年平均成交量: {avg_volume}\n"
-                f"最新RSI(14): {latest_rsi}\n"
-                f"最新MACD: {latest_macd}\n"
-                f"最新MACD信号线: {latest_macd_signal}\n"
-                f"布林带上轨: {bb_upper}\n"
-                f"布林带下轨: {bb_lower}\n"
-                f"MA20: {df['MA20'].iloc[-1]}\n"
-                f"MA50: {df['MA50'].iloc[-1]}"
+                f"最新收盘价: {latest_close:.2f}\n"
+                f"最近半年内最高收盘价: {highest_close:.2f}\n"
+                f"最近半年内最低收盘价: {lowest_close:.2f}\n"
+                f"最近半年平均成交量: {avg_volume:.0f}\n"
+                f"最新RSI(14): {latest_rsi:.2f}\n"
+                f"最新MACD: {latest_macd:.2f}\n"
+                f"最新MACD信号线: {latest_macd_signal:.2f}\n"
+                f"布林带上轨: {bb_upper:.2f}\n"
+                f"布林带下轨: {bb_lower:.2f}\n"
+                f"MA20: {df['MA20'].iloc[-1]:.2f}\n"
+                f"MA50: {df['MA50'].iloc[-1]:.2f}\n"
+                f"ATR(14): {latest_atr:.2f}\n"
+                f"随机振荡器K(14): {latest_stoch_k:.2f}\n"
+                f"随机振荡器D(14): {latest_stoch_d:.2f}\n"
+                f"RSI(9): {latest_rsi_9:.2f}\n"
+                f"OBV: {latest_obv:.0f}\n"
+                f"价格动量(10): {latest_momentum:.2f}%\n"
+                f"ADL: {latest_adl:.0f}\n"
+                f"威廉指标(14): {latest_williams_r:.2f}"
             )
             
             summary_dict[symbol] = description
