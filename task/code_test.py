@@ -72,7 +72,8 @@ def runner():
         - 'code': 股票代码
         - 'name': 股票名称
         - 'score': 短线潜力评分（0-100的整数）
-        - 'attention': 从评论摘要中提取的关注指数（数值）"""
+        - 'attention': 从评论摘要中提取的关注指数（数值）
+        - 'reason': 评分理由(不超过50字)   """
         llm_response = llm_client.one_chat(prompt)
         evaluation = stock_data_provider.extract_json_from_text(llm_response)
         stock_evaluations[stock_code] = evaluation

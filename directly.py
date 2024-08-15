@@ -4,7 +4,7 @@ stock_data_provider = code_tools["stock_data_provider"]
 llm_client = code_tools["llm_client"]
 
 # Step 1: 获取热门股票和市场信息
-hot_stocks = stock_data_provider.get_baidu_hotrank(num=50)
+hot_stocks = stock_data_provider.get_baidu_hotrank(num=100)
 market_overview = stock_data_provider.stock_market_desc()
 market_news = stock_data_provider.get_market_news_300()
 market_news_summary = stock_data_provider.summarizer_news(market_news, "提取关键信息")

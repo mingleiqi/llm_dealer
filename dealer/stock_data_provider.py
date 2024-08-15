@@ -1578,7 +1578,120 @@ class StockDataProvider:
             news = ak.stock_news_em(symbol=symbol)
             
             result[symbol] = news.to_dict(orient="list")
-    
+
+    def get_one_stock_news(self, symbol: str, num: int = 5, days: int = 7) -> List[Dict[str, str]]:
+        """
+        获取指定股票的最新新闻。
+
+        参数:
+        symbol (str): 股票代码，例如 "000001" 代表平安银行
+        num (int): 需要获取的新闻数量，默认为5条
+        days (int): 获取最近几天的新闻，默认为7天
+
+        返回:
+        List[Dict[str, str]]: 包含新闻信息的字典列表，每个字典包含以下键：
+            - 'title': 新闻标题
+            - 'content': 新闻内容摘要
+            - 'datetime': 新闻发布时间
+            - 'url': 新闻链接（如果有）
+
+        异常:
+        ValueError: 如果无法获取股票新闻
+        """
+        try:
+            # 计算起始日期
+            end_date = datetime.now()
+            start_date = end_date - timedelta(days=days)
+
+            # 使用 akshare 获取股票新闻
+            # 注意：这里假设 ak.stock_news_em 是获取新闻的正确函数，您可能需要根据实际情况调整
+            df = ak.stock_news_em(symbol=symbol)
+
+            # 过滤日期范围内的新闻
+            df['datetime'] = pd.to_datetime(df['发布时间'])
+            df = df[(df['datetime'] >= start_date) & (df['datetime'] <= end_date)]
+
+            # 选择最新的 num 条新闻
+            df = df.sort_values('datetime', ascending=False).head(num)
+
+            # 构建结果列表
+            news_list = []
+            for _, row in df.iterrows():
+                news_item = {
+                    'title': row['新闻标题'],
+                    'content': row['新闻内容'][:200] + '...',  # 取前200个字符作为摘要
+                    'datetime': row['datetime'].strftime('%Y-%m-%d %H:%M:%S'),
+                    'url': row['新闻链接'] if '新闻链接' in row else ''
+                }
+                news_list.append(news_item)
+
+            return news_list
+
+        except Exception as e:
+            raise ValueError(f"无法获取股票 {symbol} 的新闻: {str(e)}")
+
+    def get_latest_stock_data(self, symbol: str) -> Dict[str, Any]:
+        """
+        获取指定股票的最新综合数据。
+
+        参数:
+        symbol (str): 股票代码，例如 "000001" 代表平安银行
+
+        返回:
+        Dict[str, Any]: 包含股票最新数据的字典，包括以下键：
+            - 'symbol': 股票代码
+            - 'name': 股票名称
+            - 'price': 最新价格
+            - 'change': 涨跌额
+            - 'change_percent': 涨跌幅（百分比）
+            - 'open': 开盘价
+            - 'high': 最高价
+            - 'low': 最低价
+            - 'volume': 成交量
+            - 'amount': 成交金额
+            - 'bid_price': 买一价
+            - 'ask_price': 卖一价
+            - 'bid_volume': 买一量
+            - 'ask_volume': 卖一量
+            - 'timestamp': 数据时间戳
+
+        异常:
+        ValueError: 如果无法获取股票数据
+        """
+        try:
+            # 使用 akshare 的 stock_bid_ask_em 函数获取最新行情数据
+            df = ak.stock_bid_ask_em(symbol=symbol)
+            
+            # 提取需要的数据
+            data = {
+                'symbol': symbol,
+                'name': self._get_stock_name(symbol),  # 这个方法需要另外实现
+                'price': float(df.loc[df['item'] == '最新', 'value'].values[0]),
+                'change': float(df.loc[df['item'] == '涨跌', 'value'].values[0]),
+                'change_percent': float(df.loc[df['item'] == '涨幅', 'value'].values[0]),
+                'open': float(df.loc[df['item'] == '今开', 'value'].values[0]),
+                'high': float(df.loc[df['item'] == '最高', 'value'].values[0]),
+                'low': float(df.loc[df['item'] == '最低', 'value'].values[0]),
+                'volume': float(df.loc[df['item'] == '总手', 'value'].values[0]),
+                'amount': float(df.loc[df['item'] == '金额', 'value'].values[0]),
+                'bid_price': float(df.loc[df['item'] == 'buy_1', 'value'].values[0]),
+                'ask_price': float(df.loc[df['item'] == 'sell_1', 'value'].values[0]),
+                'bid_volume': float(df.loc[df['item'] == 'buy_1_vol', 'value'].values[0]),
+                'ask_volume': float(df.loc[df['item'] == 'sell_1_vol', 'value'].values[0]),
+                'timestamp': pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S'),
+            }
+            
+            return data
+
+        except Exception as e:
+            raise ValueError(f"无法获取股票 {symbol} 的最新数据: {str(e)}")
+
+    def _get_stock_name(self, symbol: str) -> str:
+        """
+        根据股票代码获取股票名称的辅助方法。
+        """
+        return self.get_code_name()[symbol]
+
     def get_stock_info(self,symbol: str) -> str:
         """
         查询指定股票代码的个股信息，参数symbol: str  返回str。
@@ -1980,6 +2093,60 @@ class StockDataProvider:
             # 如果没有找到代码块，可以选择抛出异常或返回空字符串
             # 这里选择返回空字符串
             return ""
+
+    def get_stock_volatility(self, symbol: str, period: int = 30, annualize: bool = True) -> float:
+        """
+        计算指定股票的波动率。
+
+        参数:
+        symbol (str): 股票代码
+        period (int): 计算波动率的天数，默认为30天
+        annualize (bool): 是否年化波动率，默认为True
+
+        返回:
+        float: 计算得到的波动率
+        """
+        # 获取历史收盘价数据
+        end_date = datetime.now().strftime('%Y%m%d')
+        start_date = (datetime.now() - timedelta(days=period)).strftime('%Y%m%d')
+        historical_data = self.get_historical_daily_data(symbol, start_date, end_date)
+
+        # 计算日收益率
+        returns = historical_data['收盘'].pct_change().dropna()
+
+        # 计算波动率（标准差）
+        volatility = returns.std()
+
+        # 如果需要年化，假设一年有250个交易日
+        if annualize:
+            volatility *= (250 ** 0.5)
+
+        return volatility
+
+    def get_latest_price(self, symbol: str) -> float:
+        """
+        获取指定股票的最新价格。
+
+        参数:
+        symbol (str): 股票代码，例如 "000001" 代表平安银行
+
+        返回:
+        float: 股票的最新价格
+
+        异常:
+        ValueError: 如果无法获取股票价格
+        """
+        try:
+            # 使用 akshare 的 stock_bid_ask_em 函数获取行情数据
+            df = ak.stock_bid_ask_em(symbol=symbol)
+            
+            # 从返回的数据中提取最新价格
+            # 根据数据示例，"最新" 对应的是索引为 20 的行
+            latest_price = df.loc[df['item'] == '最新', 'value'].values[0]
+            
+            return float(latest_price)
+        except Exception as e:
+            raise ValueError(f"无法获取股票 {symbol} 的最新价格: {str(e)}")
 
     def get_concept_board_components(self, symbol: str = '车联网') -> dict:
         """
