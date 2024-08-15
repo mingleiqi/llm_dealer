@@ -22,16 +22,18 @@ def _format_result(llm_client, result: str) ->str:
 def runner():
     from core.utils.code_tools import code_tools
     from core.llms.simple_deep_seek_client import SimpleDeepSeekClient
-    llm = SimpleDeepSeekClient()
+    from core.llms.mini_max_client import MiniMaxClient
+    llm = MiniMaxClient()
+    llm.debug=True
     from dealer.stock_data_provider import StockDataProvider
     data = StockDataProvider(llm)
     code_tools.add_var("llm_client",llm)
     code_tools.add_var("stock_data_provider",data)
     stock_data_provider = code_tools["stock_data_provider"]
-    llm_client = code_tools["llm_client"]
+    llm_client = llm
 
     # Step 1: 获取热门股票和市场信息
-    hot_stocks = stock_data_provider.get_baidu_hotrank(num=100)
+    hot_stocks = stock_data_provider.get_baidu_hotrank(num=200)
     market_overview = stock_data_provider.stock_market_desc()
     market_news = stock_data_provider.get_market_news_300()
     market_news_summary = stock_data_provider.summarizer_news(market_news)

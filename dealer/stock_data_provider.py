@@ -2893,6 +2893,7 @@ class StockDataProvider:
         
         if json_match:
             json_str = json_match.group(1) if '```json' in json_match.group() else json_match.group()
+            json_str = json_str.replace("'", "\"")
             return json.loads(json_str)
         
         raise json.JSONDecodeError("No valid JSON found in the text", text, 0)

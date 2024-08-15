@@ -20,29 +20,10 @@ logger = logging.getLogger(__name__)
 
 # 设置北京时区
 beijing_tz = pytz.timezone('Asia/Shanghai')
-
-
-# coding:utf-8
-import time
-import datetime
-from xtquant import xtdata
-from xtquant.xttrader import XtQuantTrader, XtQuantTraderCallback
-from xtquant.xttype import StockAccount
-from xtquant import xtconstant
-from dealer.llm_dealer import LLMDealer
-from dealer.futures_provider import MainContractProvider
-import pandas as pd
-from datetime import datetime, timedelta
-import re
-import logging
-import pytz
-
-# 设置日志
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
-
-# 设置北京时区
-beijing_tz = pytz.timezone('Asia/Shanghai')
+def interact():
+    """执行后进入repl模式"""
+    import code
+    code.InteractiveConsole(locals=globals()).interact()
 
 class LLMQMTFuturesStrategy(XtQuantTraderCallback):
     def __init__(self, path, session_id, account_id, symbol, llm_client, trade_rules = "", start_time=None,use_market_order=False, price_tolerance=0.2):
@@ -395,10 +376,12 @@ if __name__ == "__main__":
     if not account_id:
         print("没有设置account_id")
         exit(1)
+
     xuntou_path = get_key("xuntou_path")
     if not xuntou_path:
         print("没有设置讯投APP的路径")
         exit(1)
+
     symbol = get_key('symbol')
     if not symbol:
         symbol = 'sc2409.INE'
