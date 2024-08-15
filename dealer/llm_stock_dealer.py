@@ -84,31 +84,22 @@ class StockPosition:
 
 class Portfolio:
     def __init__(self):
-        self.stocks: Dict[str, Dict] = {}  # symbol: {type, target_price, stop_loss}
+        self.stocks: Dict[str, Dict] = {}
 
-    def add_stock(self, symbol: str, stock_type: str, target_price: Optional[float] = None, stop_loss: Optional[float] = None):
+    def update_portfolio(self, new_stocks: List[str]):
         """
-        添加单个股票到投资组合。
-        如果没有提供目标价格或止损价格，将设置为None。
+        更新整个投资组合
         """
+        self.stocks.clear()
+        for symbol in new_stocks:
+            self.add_stock(symbol)
+
+    def add_stock(self, symbol: str, stock_type: str = "medium_term", target_price: Optional[float] = None, stop_loss: Optional[float] = None):
         self.stocks[symbol] = {
             "type": stock_type,
             "target_price": target_price,
             "stop_loss": stop_loss
         }
-
-    def add_stocks(self, stocks: List[Dict[str, Union[str, float, None]]]):
-        """
-        批量添加多个股票到投资组合。
-        每个股票应该是一个字典，包含 'symbol', 'type', 可选的 'target_price' 和 'stop_loss'。
-        """
-        for stock in stocks:
-            self.add_stock(
-                symbol=stock['symbol'],
-                stock_type=stock['type'],
-                target_price=stock.get('target_price'),
-                stop_loss=stock.get('stop_loss')
-            )
 
     def remove_stock(self, symbol: str):
         if symbol in self.stocks:
@@ -121,20 +112,8 @@ class Portfolio:
         return self.stocks
 
     def update_stock(self, symbol: str, **kwargs):
-        """
-        更新股票的信息。可以更新类型、目标价格或止损价格。
-        """
         if symbol in self.stocks:
             self.stocks[symbol].update(kwargs)
-
-    def to_dict(self):
-        return self.stocks
-
-    @classmethod
-    def from_dict(cls, data):
-        portfolio = cls()
-        portfolio.stocks = data
-        return portfolio
 
 class LLMStockDealer:
     def __init__(self, llm_client, data_provider, trade_rules: str = "", 
@@ -146,9 +125,7 @@ class LLMStockDealer:
         self.data_file = data_file
 
         self.portfolio = Portfolio()
-        self.positions: List[StockPosition] = []
-        self.last_trade_date = None
-        self.last_msg = ""
+        self.positions = []
         self.available_cash = 0
         
         self.logger = self._setup_logging()
@@ -191,13 +168,25 @@ class LLMStockDealer:
             self.last_trade_date = datetime.fromisoformat(data['last_trade_date']) if data['last_trade_date'] else None
             self.last_msg = data['last_msg']
 
-    def update_portfolio(self, stocks: List[Dict[str, Union[str, float, None]]]):
+    def update_portfolio(self, new_stocks: List[str]):
         """
-        更新投资组合
-        stocks: [{"symbol": "AAPL", "type": "long_term", "target_price": 150.0, "stop_loss": 130.0}, ...]
+        更新整个投资组合
         """
-        for stock in stocks:
-            self.portfolio.add_stock(stock['symbol'], stock['type'], stock['target_price'], stock['stop_loss'])
+        self.portfolio.update_portfolio(new_stocks)
+        self._save_data()
+
+    def update_positions(self, new_positions: List[Dict]):
+        """
+        更新持仓信息
+        """
+        self.positions = [StockPosition.from_dict(pos) for pos in new_positions]
+        self._save_data()
+
+    def update_cash(self, available_cash: float):
+        """
+        更新可用资金
+        """
+        self.available_cash = available_cash
         self._save_data()
 
     def remove_from_portfolio(self, symbol: str):
@@ -235,6 +224,30 @@ class LLMStockDealer:
         self.last_msg = json.dumps(results)
         self._save_data()
         return results
+
+    def calculate_total_assets(self) -> float:
+        """
+        计算总资产，包括可用现金和所有持仓的当前市值。
+
+        返回:
+        float: 总资产值
+        """
+        total_assets = self.available_cash
+
+        for position in self.positions:
+            if not position.is_closed():
+                try:
+                    current_price = self.data_provider.get_latest_price(position.symbol)
+                    position_value = position.total_quantity * current_price
+                    total_assets += position_value
+                except Exception as e:
+                    self.logger.error(f"Error calculating value for position {position.symbol}: {str(e)}")
+                    # 如果无法获取最新价格，我们可以选择使用上次已知的价格，或者跳过这个持仓
+                    # 这里我们选择使用持仓的入场价格作为后备
+                    total_assets += position.total_quantity * position.entry_price
+
+        self.logger.info(f"Total assets calculated: {total_assets:.2f}")
+        return total_assets
 
     def _prepare_llm_input(self, symbol: str, bar: pd.Series, news: str) -> str:
         portfolio_info = "\n".join([f"{s}: {info}" for s, info in self.portfolio.get_all_stocks().items()])
@@ -353,20 +366,38 @@ class LLMStockDealer:
 
         stock_info = self.portfolio.get_stock(symbol)
         current_position = self.get_position(symbol)
-        max_new_position = self.max_position - current_position
+        current_holding_value = current_position * price
+
+        # 计算可用于购买该股票的最大金额
+        total_assets = self.calculate_total_assets()
+        max_position_value = total_assets * self.max_position_percentage
+        available_for_symbol = min(max_position_value - current_holding_value, self.available_cash)
+
+        # 计算可以购买的最大数量
+        max_buyable_quantity = int(available_for_symbol / price)
 
         if quantity == 'all':
-            quantity = max_new_position
+            quantity = max_buyable_quantity
         else:
-            quantity = min(int(quantity), max_new_position)
+            quantity = min(int(quantity), max_buyable_quantity)
 
         if quantity <= 0:
-            self.logger.warning(f"Cannot open position for {symbol}: max position reached or invalid quantity")
+            self.logger.warning(f"Cannot open position for {symbol}: insufficient funds or invalid quantity")
             return
 
-        new_position = StockPosition(symbol, price, quantity, datetime, stock_info['type'])
-        self.positions.append(new_position)
-        self.logger.info(f"Opened position: {symbol}, Quantity: {quantity}, Price: {price}")
+        # 确保购买数量是100的整数倍（如果适用于您的交易规则）
+        quantity = (quantity // 100) * 100
+
+        if quantity > 0:
+            new_position = StockPosition(symbol, price, quantity, datetime, stock_info['type'])
+            self.positions.append(new_position)
+            
+            # 更新可用资金
+            self.available_cash -= quantity * price
+            
+            self.logger.info(f"Opened position: {symbol}, Quantity: {quantity}, Price: {price}, Remaining cash: {self.available_cash:.2f}")
+        else:
+            self.logger.warning(f"Cannot open position for {symbol}: quantity after rounding to 100-share lots is 0")
 
     def _close_position(self, symbol: str, price: float, quantity: Union[int, str], datetime: datetime):
         open_positions = [pos for pos in self.positions if pos.symbol == symbol and not pos.is_closed()]
