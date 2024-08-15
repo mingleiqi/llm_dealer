@@ -281,7 +281,7 @@ class SimpleClaudeAwsClient(LLMApiClient):
         else:
             return assistant_message
         
-    @retry(retry=retry_if_exception(),wait=wait_fixed(5))
+    @retry(retry=retry_if_exception(Exception),wait=wait_fixed(5),stop_max_attempt_number=3 )
     def one_chat(self, message: Union[str, List[Union[str, Any]]], max_tokens: Optional[ int ]= None, is_stream: bool = False) -> Union[str, Iterator[str]]:
         messages = [{"role": "user", "content": message}] if isinstance(message, str) else message
         response = self.client.messages.create(

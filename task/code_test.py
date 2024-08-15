@@ -1,6 +1,7 @@
 
 
 import json
+from core.utils.timer import timer
 
 
 def _format_result(llm_client, result: str) ->str:
@@ -22,6 +23,7 @@ def _format_result(llm_client, result: str) ->str:
     markdown_result = llm_client.one_chat(markdown_prompt)
     return markdown_result
 
+@timer
 def runner():
     from core.utils.code_tools import code_tools
     from core.llms.simple_deep_seek_client import SimpleDeepSeekClient
