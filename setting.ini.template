@@ -8,6 +8,11 @@ rq_pwd =
 account_id = 
 symbol = sc2409.INE
 minimax_api_key = 
-trade_rules = 把握趋势，控制回撤
+trade_rules = 亏损不加仓，盈利回撤可加仓，把握趋势，控制回撤
+xuntou_path = D:\app\迅投\userdata
+deep_seek_api_key = 
+stock_trade_rules = 浮动止盈，减少回撤
+portfolios = 
+stock_account_id = 
 [GitHub]
 token = 
