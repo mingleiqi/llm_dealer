@@ -3218,3 +3218,4 @@ class StockDataProvider:
         """
         return prompt
     
+    
