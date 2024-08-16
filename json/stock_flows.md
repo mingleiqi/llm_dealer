@@ -260,3 +260,221 @@
 - 建议用户在做出投资决策前进行更深入的研究
 - 使用code_tools.add()存储每个步骤的关键输出
 - 最后一步使用code_tools.add('output_result', final_report)存储最终报告
+
+### 中长线股票推荐模板
+
+1. 初始股票池筛选
+
+- 使用 `get_institute_recommendations` 获取机构推荐股票，选择 "投资评级选股" 选项
+- 使用 `get_top_holdings_by_market` 获取北向资金持仓前30只股票
+- 合并去重，形成初始股票池
+
+输出:
+- `initial_stock_pool`: List[str] 初始股票代码列表
+
+2. 市场概况分析
+
+- 使用 `stock_market_desc` 获取市场整体描述
+- 使用 `get_market_news_300` 获取市场新闻，用 `summarizer_news` 提取关键信息
+
+输出:
+- `market_overview`: str 市场整体描述
+- `market_news_summary`: str 市场新闻摘要
+
+3. 个股数据收集
+
+对每只股票进行以下数据收集：
+- 使用 `get_financial_analysis_summary` 获取财务分析摘要
+- 使用 `get_stock_a_indicators` 获取股票市场指标
+- 使用 `get_main_business_description` 获取主营业务描述
+- 使用 `get_stock_profit_forecast` 获取盈利预测数据
+- 使用 `get_baidu_analysis_summary` 获取百度分析摘要
+
+输出:
+- `stock_data`: Dict[str, Dict] 股票数据字典
+
+4. LLM分析
+
+输入: `stock_data`, `market_overview`, `market_news_summary`
+
+对每只股票进行LLM分析：
+- 生成评估提示词，包含收集的数据
+- 使用 `llm_client.one_chat(prompt)` 进行评估
+- 解析LLM返回的JSON结果
+
+提示词模板：
+作为一位经验丰富的金融分析师，请您基于以下信息对[股票代码]进行中长期投资价值分析：
+
+市场概况：
+[market_overview]
+市场新闻摘要：
+[market_news_summary]
+公司基本信息：
+[stock_data[stock_code]['business_description']]
+财务分析摘要：
+[stock_data[stock_code]['financial_summary']]
+股票市场指标：
+[stock_data[stock_code]['stock_a_indicators']]
+盈利预测：
+[stock_data[stock_code]['profit_forecast']]
+百度分析摘要：
+[stock_data[stock_code]['baidu_analysis']]
+
+请提供以下分析，并以JSON格式返回：
+
+growth_potential: 公司中长期成长潜力评估（1-100分）
+financial_health: 财务健康状况评估（1-100分）
+industry_outlook: 行业前景评估（1-100分）
+competitive_advantage: 竞争优势分析（100字以内）
+risk_factors: 潜在风险因素（列出top3）
+investment_recommendation: 中长线投资推荐理由（200字以内）
+
+在分析时，请特别注意以下几点：
+
+公司的长期成长性和可持续发展能力
+财务状况的稳定性和盈利能力的持续性
+行业的长期发展趋势和公司在行业中的地位
+公司的核心竞争力和创新能力
+潜在的风险因素及其可能对公司长期发展的影响
+
+请确保您的分析全面、客观，并提供有见地的洞察。您的评估将用于中长期投资决策，因此请着重考虑3-5年的发展前景。
+请以JSON格式返回您的分析结果，包含上述6个字段。
+
+输出:
+- `stock_evaluations`: Dict[str, Dict] 股票评估结果字典，包含以下字段：
+  - growth_potential: int (1-100)
+  - financial_health: int (1-100)
+  - industry_outlook: int (1-100)
+  - competitive_advantage: str
+  - risk_factors: List[str]
+  - investment_recommendation: str
+
+5. 筛选和排序
+
+- 计算综合得分：
+  综合得分 = 成长潜力 * 0.5 + 财务健康 * 0.3 + 行业前景 * 0.2
+- 选择综合得分排名前10的股票
+
+输出:
+- `recommended_stocks`: List[Dict] 推荐股票列表
+
+6. 生成推荐报告
+
+输入: `recommended_stocks`, `market_overview`, `market_news_summary`
+
+报告内容：
+1. 市场概况
+2. 推荐股票列表，每只股票包含：
+   - 股票代码和名称
+   - 综合得分
+   - 成长潜力、财务健康、行业前景评分
+   - 竞争优势
+   - 主要风险
+   - 投资建议
+3. 风险提示
+
+输出:
+- `output_result`: str 最终的推荐报告
+
+注意事项
+
+- 关注公司长期成长性、财务稳健性和行业发展前景
+- 考虑公司竞争优势和创新能力
+- 基于综合因素提供推荐，包括基本面和行业趋势
+- 清晰说明这是基于当前数据的分析，不构成投资建议
+- 强调中长线投资需要持续关注公司发展和市场变化
+
+### 个股行情解读模板
+
+1. 股票代码获取
+
+- 使用 `search_stock_code(stock_name)` 获取股票代码
+
+2. 数据收集
+
+对于获取的股票代码 `stock_code`，收集以下数据：
+
+- 使用 `get_stock_info(stock_code)` 获取股票基本信息
+- 使用 `get_latest_stock_data(stock_code)` 获取最新行情数据
+- 使用 `get_historical_daily_data(stock_code, start_date, end_date)` 获取最近30个交易日的历史数据
+- 使用 `get_stock_a_indicators(stock_code)` 获取A股个股指标
+- 使用 `get_one_stock_news(stock_code, num=5)` 获取最新的5条相关新闻
+- 使用 `get_baidu_analysis_summary(stock_code)` 获取百度分析摘要
+- 使用 `get_stock_comments_summary()` 获取该股票的千股千评数据
+- 使用 `get_industry_pe_ratio("证监会行业分类", date)` 获取行业市盈率数据
+
+3. 数据分析
+
+使用 LLM 分析收集到的数据，生成个股行情解读。提示词如下：
+为一位专业的股票分析师，请根据以下信息对 [股票代码] [股票名称] 的近期行情进行全面解读：
+
+股票基本信息：
+[插入 get_stock_info() 的结果]
+最新行情数据：
+[插入 get_latest_stock_data() 的结果]
+近30个交易日历史数据摘要：
+[插入 get_historical_daily_data() 的摘要统计，包括价格范围、平均成交量等]
+A股个股指标：
+[插入 get_stock_a_indicators() 的结果]
+最新相关新闻：
+[插入 get_one_stock_news() 的结果]
+百度分析摘要：
+[插入 get_baidu_analysis_summary() 的结果]
+千股千评数据：
+[插入 get_stock_comments_summary() 中该股票的数据]
+行业市盈率数据：
+[插入 get_industry_pe_ratio() 的结果]
+
+请提供以下分析：
+
+股价走势分析（200字以内）：分析近期股价走势，包括关键支撑位和压力位，以及可能的突破点。
+成交量分析（150字以内）：解读成交量变化，评估买卖双方力量对比。
+基本面评估（200字以内）：基于公司基本面信息和行业数据，评估公司当前估值水平和增长潜力。
+技术指标解读（200字以内）：解读主要技术指标（如 MACD、KDJ、RSI 等）的信号，预判可能的走势。
+消息面影响（150字以内）：分析近期新闻对股价的潜在影响。
+行业对比（150字以内）：将该股票与行业平均水平对比，评估其相对优势或劣势。
+风险提示（100字以内）：指出投资该股票可能面临的主要风险。
+投资建议（150字以内）：基于以上分析，给出短期（1-2周）和中期（1-3个月）的投资建议。
+
+请确保您的分析客观、全面，并提供有见地的洞察。您的解读将帮助投资者理解该股票的近期表现并为投资决策提供参考。
+请以JSON格式返回您的分析结果，包含上述8个字段。
+
+4. 生成报告
+
+基于LLM的分析结果，生成最终的个股行情解读报告。报告结构如下：
+
+1. 股票概况
+   - 基本信息
+   - 最新行情数据
+
+2. 走势分析
+   - 近期股价走势
+   - 成交量分析
+   - 技术指标解读
+
+3. 基本面评估
+   - 公司基本面
+   - 行业对比分析
+   - 估值水平评估
+
+4. 消息面分析
+   - 近期相关新闻
+   - 消息对股价的影响
+
+5. 风险与机会
+   - 主要风险因素
+   - 潜在投资机会
+
+6. 投资建议
+   - 短期操作建议
+   - 中期投资策略
+
+## 5. 注意事项
+
+- 确保使用最新的股票数据进行分析
+- 保持分析的客观性，避免过度乐观或悲观的偏见
+- 关注个股的特定因素，如公司基本面、行业地位等
+- 将技术分析与基本面分析相结合
+- 考虑市场整体环境对个股的影响
+- 提供具体、可操作的投资建议，但同时提醒投资者注意风险
+- 使用清晰、易懂的语言，避免过于专业的术语
