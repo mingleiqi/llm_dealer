@@ -4,6 +4,7 @@
 
 
 
+import re
 from .stock_data_provider import StockDataProvider
 
 import json
@@ -215,26 +216,18 @@ class LLMStockDealer:
                 positions[pos.symbol] = positions.get(pos.symbol, 0) + pos.quantity
         return positions
 
-    def process_bar(self, bars: Dict[str, pd.Series], news: Dict[str, str] = {}) -> Dict[str, Tuple[str, Union[int, str], str]]:
-        current_date = list(bars.values())[0]['datetime'].date()
-        if self.last_trade_date != current_date:
-            self._close_all_positions(bars)
-            self.last_trade_date = current_date
-
+    def process_bar(self, bars: Dict[str, pd.Series], news: Dict[str, str] = {}) -> Dict[str, Tuple[str, Union[int, str], str, str, str]]:
         results = {}
         for symbol, bar in bars.items():
-            if symbol in self.portfolio.get_all_stocks():
+            try:
                 llm_input, max_buyable_quantity = self._prepare_llm_input(symbol, bar, news.get(symbol, ""))
                 llm_response = self.llm_client.one_chat(llm_input)
+                self.logger.debug(f"LLM response for {symbol}: {llm_response}")  # 添加这行来记录原始响应
                 trade_instruction, quantity, next_msg, trade_reason, trade_plan = self._parse_llm_output(llm_response, max_buyable_quantity)
-
-                self._execute_trade(trade_instruction, quantity, bar, trade_reason, trade_plan)
-                self._log_trade(symbol, bar, news.get(symbol, ""), trade_instruction, quantity, trade_reason, trade_plan)
-
-                results[symbol] = (trade_instruction, quantity, next_msg)
-
-        self.last_msg = json.dumps(results)
-        self._save_data()
+                results[symbol] = (trade_instruction, quantity, next_msg, trade_reason, trade_plan)
+            except Exception as e:
+                self.logger.error(f"Error processing bar for {symbol}: {e}", exc_info=True)
+                results[symbol] = ('hold', 0, '', f"Error: {str(e)}", '')
         return results
 
     def calculate_total_assets(self) -> float:
@@ -324,42 +317,61 @@ class LLMStockDealer:
 
         请确保输出的JSON格式正确。
         """
-        return input_template
+        return input_template, max_buyable_quantity
 
     def _parse_llm_output(self, llm_response: str, max_buyable_quantity: int) -> Tuple[str, Union[int, str], str, str, str]:
+        # 首先尝试提取 JSON 部分
+        json_match = re.search(r'```json\s*([\s\S]*?)\s*```', llm_response)
+        if json_match:
+            json_str = json_match.group(1)
+        else:
+            json_str = llm_response
+
         try:
-            data = json.loads(llm_response)
-            trade_instruction = data.get('trade_instruction', 'hold').lower()
-            next_msg = data.get('next_message', '')
-            trade_reason = data.get('trade_reason', '')
-            trade_plan = data.get('trade_plan', '')
+            data = json.loads(json_str)
+        except json.JSONDecodeError:
+            self.logger.warning(f"Failed to parse JSON. Attempting to extract information from text response.")
+            data = self._extract_info_from_text(llm_response)
 
-            instruction_parts = trade_instruction.split()
-            action = instruction_parts[0]
-            symbol = instruction_parts[-1] if len(instruction_parts) > 2 else self.symbol
+        trade_instruction = data.get('trade_instruction', 'hold').lower()
+        next_msg = data.get('next_message', '')
+        trade_reason = data.get('trade_reason', '')
+        trade_plan = data.get('trade_plan', '')
 
-            if action not in ['buy', 'sell', 'hold']:
-                self.logger.warning(f"Invalid trade instruction: {action}. Defaulting to 'hold'.")
-                return "hold", 0, next_msg, "", trade_plan
+        instruction_parts = trade_instruction.split()
+        action = instruction_parts[0]
+        symbol = instruction_parts[-1] if len(instruction_parts) > 2 else ''
 
-            if action == 'buy':
-                quantity = int(instruction_parts[1]) if len(instruction_parts) > 1 else 0
-                quantity = min(quantity, max_buyable_quantity)
-                quantity = (quantity // 100) * 100  # Ensure quantity is a multiple of 100
-            elif action == 'sell':
-                current_position = sum(pos.quantity for pos in self.positions if pos.symbol == symbol and not pos.is_closed())
-                quantity = int(instruction_parts[1]) if len(instruction_parts) > 1 else current_position
-                quantity = min(quantity, current_position)
-            else:  # hold
-                quantity = 0
+        if action not in ['buy', 'sell', 'hold']:
+            self.logger.warning(f"Invalid trade instruction: {action}. Defaulting to 'hold'.")
+            return "hold", 0, next_msg, trade_reason, trade_plan
 
-            return f"{action} {symbol}", quantity, next_msg, trade_reason, trade_plan
-        except json.JSONDecodeError as e:
-            self.logger.error(f"JSON parsing error: {e}")
-            return "hold", 0, "", "JSON 解析错误", ""
-        except Exception as e:
-            self.logger.error(f"Error parsing LLM output: {e}")
-            return "hold", 0, "", "解析错误", ""
+        if action == 'buy':
+            quantity = int(instruction_parts[1]) if len(instruction_parts) > 1 else 0
+            quantity = min(quantity, max_buyable_quantity)
+            quantity = (quantity // 100) * 100  # Ensure quantity is a multiple of 100
+        elif action == 'sell':
+            current_position = sum(pos.quantity for pos in self.positions if pos.symbol == symbol and not pos.is_closed())
+            quantity = int(instruction_parts[1]) if len(instruction_parts) > 1 else current_position
+            quantity = min(quantity, current_position)
+        else:  # hold
+            quantity = 0
+
+        return f"{action} {symbol}", quantity, next_msg, trade_reason, trade_plan
+
+    def _extract_info_from_text(self, text: str) -> Dict[str, str]:
+        data = {}
+        patterns = {
+            'trade_instruction': r'交易指令[:：]\s*(.+)',
+            'next_message': r'下一次需要的消息[:：]\s*(.+)',
+            'trade_reason': r'交易理由[:：]\s*(.+)',
+            'trade_plan': r'交易计划[:：]\s*(.+)'
+        }
+        for key, pattern in patterns.items():
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                data[key] = match.group(1).strip()
+        return data
 
     def _execute_trade(self, trade_instruction: str, quantity: Union[int, str], bar: pd.Series, trade_reason: str, trade_plan: str):
         action, symbol = trade_instruction.split()

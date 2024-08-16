@@ -75,6 +75,10 @@ class LLMQMTStockStrategy(XtQuantTraderCallback):
         self.account = None
         self.data_provider = StockDataProvider(llm_client)
         self.dealer = LLMStockDealer(self.llm_client, self.data_provider, self.trade_rules)
+
+        self.bar_data_buffer = {}
+        self.last_process_time = time.time()
+        self.process_interval = 60  # 60秒，即一分钟
         
         # 初始化讯投交易环境
         self.initialize_xt_trader()
@@ -92,6 +96,28 @@ class LLMQMTStockStrategy(XtQuantTraderCallback):
         # 创建资金账号对象，股票账号为STOCK
         self.account = StockAccount(self.account_id, 'STOCK')
         logger.info(f"Created account object for account ID: {self.account_id}")
+
+        # 注册回调
+        self.xt_trader.register_callback(self)
+        logger.info("Registered callback")
+        
+        # 启动交易线程
+        self.xt_trader.start()
+        logger.info("Started trading thread")
+        
+        # 建立交易连接，返回0表示连接成功
+        connect_result = self.xt_trader.connect()
+        logger.info(f"Connection result: {connect_result}")
+        if connect_result != 0:
+            logger.error("Failed to establish trading connection")
+            return False
+        
+        # 对交易回调进行订阅，订阅后可以收到交易主推，返回0表示订阅成功
+        subscribe_result = self.xt_trader.subscribe(self.account)
+        logger.info(f"Subscribe result: {subscribe_result}")
+        if subscribe_result != 0:
+            logger.error("Failed to subscribe to trading callbacks")
+            return False
 
     def sync_with_account(self):
         """
@@ -134,28 +160,6 @@ class LLMQMTStockStrategy(XtQuantTraderCallback):
 
     def start(self):
 
-        # 注册回调
-        self.xt_trader.register_callback(self)
-        logger.info("Registered callback")
-        
-        # 启动交易线程
-        self.xt_trader.start()
-        logger.info("Started trading thread")
-        
-        # 建立交易连接，返回0表示连接成功
-        connect_result = self.xt_trader.connect()
-        logger.info(f"Connection result: {connect_result}")
-        if connect_result != 0:
-            logger.error("Failed to establish trading connection")
-            return False
-        
-        # 对交易回调进行订阅，订阅后可以收到交易主推，返回0表示订阅成功
-        subscribe_result = self.xt_trader.subscribe(self.account)
-        logger.info(f"Subscribe result: {subscribe_result}")
-        if subscribe_result != 0:
-            logger.error("Failed to subscribe to trading callbacks")
-            return False
-        
         # 订阅行情数据
         self.subscribe_market_data()
         
@@ -183,8 +187,7 @@ class LLMQMTStockStrategy(XtQuantTraderCallback):
 
     def on_bar_data(self, data):
         """处理实时行情数据的回调函数"""
-        bars = {}
-        news = {}
+        current_time = time.time()
         
         for stock, bar_data in data.items():
             if stock in self.dealer.portfolio.get_all_stocks():
@@ -199,28 +202,65 @@ class LLMQMTStockStrategy(XtQuantTraderCallback):
                         'amount': bar_data[0]['amount'],
                         'hold': bar_data[0]['openInterest']
                     })
-                    bars[stock] = bar
                     
-                    # 获取该股票的最新新闻
-                    news[stock] = self.get_latest_news(stock)
+                    # 更新或添加到缓冲区
+                    if stock not in self.bar_data_buffer:
+                        self.bar_data_buffer[stock] = bar
+                    else:
+                        # 更新现有数据
+                        self.bar_data_buffer[stock]['high'] = max(self.bar_data_buffer[stock]['high'], bar['high'])
+                        self.bar_data_buffer[stock]['low'] = min(self.bar_data_buffer[stock]['low'], bar['low'])
+                        self.bar_data_buffer[stock]['close'] = bar['close']
+                        self.bar_data_buffer[stock]['volume'] += bar['volume']
+                        self.bar_data_buffer[stock]['amount'] += bar['amount']
+                        self.bar_data_buffer[stock]['hold'] = bar['hold']
                     
                 except Exception as e:
                     logger.error(f"Error processing bar data for {stock}: {e}")
             else:
                 logger.warning(f"Received data for unsubscribed stock: {stock}")
-        
-        if bars:
-            try:
-                # 处理所有收到的bar数据
-                results = self.dealer.process_bar(bars, news)
-                
-                # 执行交易指令
-                for stock, (trade_instruction, quantity, next_msg) in results.items():
-                    if trade_instruction != 'hold':
-                        self.execute_trade(stock, trade_instruction, quantity, bars[stock]['close'])
-                    
-            except Exception as e:
-                logger.error(f"Error in batch processing of bar data: {e}")
+
+        # 检查是否达到处理间隔
+        if current_time - self.last_process_time >= self.process_interval:
+            self.process_buffered_data()
+            self.last_process_time = current_time
+
+    def process_buffered_data(self):
+        if not self.bar_data_buffer:
+            return
+
+        try:
+            # 获取新闻数据
+            news = {stock: self.get_latest_news(stock) for stock in self.bar_data_buffer.keys()}
+            
+            # 处理所有收到的bar数据
+            results = self.dealer.process_bar(self.bar_data_buffer, news)
+            logger.debug(f"process_bar results: {results}")
+            
+            # 执行交易指令
+            for stock, result in results.items():
+                logger.debug(f"Processing result for {stock}: {result}")
+                if isinstance(result, tuple):
+                    if len(result) == 3:
+                        trade_instruction, quantity, next_msg = result
+                        if trade_instruction != 'hold':
+                            self.execute_trade(stock, trade_instruction, quantity, self.bar_data_buffer[stock]['close'])
+                    elif len(result) == 5:
+                        trade_instruction, quantity, next_msg, trade_reason, trade_plan = result
+                        if trade_instruction != 'hold':
+                            self.execute_trade(stock, trade_instruction, quantity, self.bar_data_buffer[stock]['close'])
+                        logger.info(f"Trade reason for {stock}: {trade_reason}")
+                        logger.info(f"Trade plan for {stock}: {trade_plan}")
+                    else:
+                        logger.warning(f"Unexpected result format for {stock}: {result}")
+                else:
+                    logger.warning(f"Unexpected result type for {stock}: {type(result)}")
+            
+            # 清空缓冲区
+            self.bar_data_buffer.clear()
+            
+        except Exception as e:
+            logger.error(f"Error in batch processing of bar data: {e}", exc_info=True)
 
     def parse_timestamp(self, timestamp):
         """解析时间戳"""
@@ -273,31 +313,37 @@ class LLMQMTStockStrategy(XtQuantTraderCallback):
         except Exception as e:
             return f"获取股票 {symbol} 的新闻时发生错误: {str(e)}"
 
-    def execute_trade(self, stock, instruction, quantity, price):
-        logger.info(f"执行交易: {stock} {instruction} {quantity} @ {price}")
+    def execute_trade(self, stock, trade_instruction, quantity, price):
+        logger.info(f"执行交易: {stock} {trade_instruction} {quantity} @ {price}")
         
+        action = trade_instruction.split()[0]
+        
+        if action == 'hold':
+            logger.info(f"保持当前持仓，不执行交易: {stock}")
+            return
+
         order_price = price
         order_type = xtconstant.FIX_PRICE
 
         if self.use_market_order:
             order_type = xtconstant.LATEST_PRICE
         else:
-            if instruction in ['buy', 'cover']:
+            if action == 'buy':
                 order_price = price * (1 + self.price_tolerance)
-            elif instruction in ['sell', 'short']:
+            elif action == 'sell':
                 order_price = price * (1 - self.price_tolerance)
 
-        if instruction == 'buy':
+        if action == 'buy':
             order_id = self.xt_trader.order_stock(self.account, stock, xtconstant.STOCK_BUY, 
-                                                  quantity, order_type, order_price, 'LLM_strategy', 'LLM_buy')
-        elif instruction == 'sell':
+                                                quantity, order_type, order_price, 'LLM_strategy', 'LLM_buy')
+        elif action == 'sell':
             order_id = self.xt_trader.order_stock(self.account, stock, xtconstant.STOCK_SELL, 
-                                                  quantity, order_type, order_price, 'LLM_strategy', 'LLM_sell')
+                                                quantity, order_type, order_price, 'LLM_strategy', 'LLM_sell')
         else:
-            logger.warning(f"未知的交易指令: {instruction}")
+            logger.warning(f"未知的交易指令: {trade_instruction}")
             return
 
-        logger.info(f"已发送订单: ID={order_id}, 股票={stock}, 指令={instruction}, 数量={quantity}, 价格类型={order_type}, 价格={order_price}")
+        logger.info(f"已发送订单: ID={order_id}, 股票={stock}, 指令={trade_instruction}, 数量={quantity}, 价格类型={order_type}, 价格={order_price}")
 
     def run_strategy(self):
         """运行策略"""
