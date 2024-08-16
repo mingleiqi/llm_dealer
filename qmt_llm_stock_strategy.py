@@ -86,8 +86,12 @@ class LLMQMTStockStrategy(XtQuantTraderCallback):
         self.sync_with_account()
 
     def initialize_xt_trader(self):
+        logger.info("Starting LLMQMTStockStrategy")
         self.xt_trader = XtQuantTrader(self.path, self.session_id)
+        
+        # 创建资金账号对象，股票账号为STOCK
         self.account = StockAccount(self.account_id, 'STOCK')
+        logger.info(f"Created account object for account ID: {self.account_id}")
 
     def sync_with_account(self):
         """
@@ -129,13 +133,7 @@ class LLMQMTStockStrategy(XtQuantTraderCallback):
         self.sync_with_account()
 
     def start(self):
-        logger.info("Starting LLMQMTStockStrategy")
-        self.xt_trader = XtQuantTrader(self.path, self.session_id)
-        
-        # 创建资金账号对象，股票账号为STOCK
-        self.account = StockAccount(self.account_id, 'STOCK')
-        logger.info(f"Created account object for account ID: {self.account_id}")
-        
+
         # 注册回调
         self.xt_trader.register_callback(self)
         logger.info("Registered callback")

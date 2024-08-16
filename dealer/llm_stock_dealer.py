@@ -117,6 +117,12 @@ class Portfolio:
     
     def to_dict(self):
         return self.stocks
+    
+    @staticmethod
+    def from_dict(value):
+        p=Portfolio()
+        p.stocks = value
+        return p
 
 class LLMStockDealer:
     def __init__(self, llm_client, data_provider, trade_rules: str = "", 
