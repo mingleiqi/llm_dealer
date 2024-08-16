@@ -33,7 +33,7 @@ class XtCodeTrans:
         code_list = xtdata.get_stock_list_in_sector("沪深A股")
         for code in code_list:
             key, value = code.split(".")  # 拆分代码
-            self.dict[key] = value 
+            self.dict[key] = code 
 
     def __len__(self):
         """返回字典中键值对的数量"""

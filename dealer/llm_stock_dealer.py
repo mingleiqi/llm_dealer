@@ -114,6 +114,9 @@ class Portfolio:
     def update_stock(self, symbol: str, **kwargs):
         if symbol in self.stocks:
             self.stocks[symbol].update(kwargs)
+    
+    def to_dict(self):
+        return self.stocks
 
 class LLMStockDealer:
     def __init__(self, llm_client, data_provider, trade_rules: str = "", 
@@ -127,6 +130,9 @@ class LLMStockDealer:
         self.portfolio = Portfolio()
         self.positions = []
         self.available_cash = 0
+
+        self.last_trade_date=datetime.now()
+        self.last_msg=""
         
         self.logger = self._setup_logging()
         self._load_data()
