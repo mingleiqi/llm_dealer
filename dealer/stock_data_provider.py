@@ -64,6 +64,43 @@ class StockDataProvider:
         """
         return self.stock_finder[name]
     
+    def get_cctv_news(self, days=30) -> List[dict]:
+        """
+        获取最近指定天数的CCTV新闻联播内容，参数需要获取的天数 days=30 ，返回列表，包含date、title、content
+
+        参数:
+        days (int): 要获取的天数，默认为30天
+
+        返回:
+        List[dict]: 包含新闻数据的字典列表，每个字典包含date（日期）、title（标题）和content（内容）
+        """
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=days)
+        
+        news_list = []
+        current_date = end_date
+        
+        while current_date >= start_date:
+            date_str = current_date.strftime("%Y%m%d")
+            try:
+                news_df = ak.news_cctv(date=date_str)
+                if not news_df.empty:
+                    for _, row in news_df.iterrows():
+                        news_item = {
+                            "date": row['date'],
+                            "title": row['title'],
+                            "content": row['content']
+                        }
+                        news_list.append(news_item)
+                else:
+                    print(f"No news data available for {date_str}")
+            except Exception as e:
+                print(f"Error fetching news for {date_str}: {str(e)}")
+            
+            current_date -= timedelta(days=1)
+        
+        return news_list
+
     def _fetch_trading_dates(self):
         # 获取当前时间
         now = datetime.now()
@@ -412,6 +449,50 @@ class StockDataProvider:
 
         return result
 
+    def get_stock_report_fund_hold(self, indicator: Literal["基金持仓", "QFII持仓", "社保持仓", "券商持仓", "保险持仓", "信托持仓"] = "基金持仓") -> Dict[str, str]:
+        """
+        获取东方财富网的机构持股报告数据。indicator="基金持仓" 返回dict[symbol,str]
+
+        参数:
+        indicator (str): 持股类型，可选值为 "基金持仓", "QFII持仓", "社保持仓", "券商持仓", "保险持仓", "信托持仓"，默认为 "基金持仓"
+
+        返回:
+        Dict[str, str]: 键为股票代码，值为格式化的持股信息字符串
+        """
+        try:
+            # 获取最近的财报发布日期
+            current_date = datetime.now()
+            if current_date.month <= 4:
+                report_date = f"{current_date.year - 1}-12-31"
+            elif current_date.month <= 8:
+                report_date = f"{current_date.year}-03-31"
+            elif current_date.month <= 10:
+                report_date = f"{current_date.year}-06-30"
+            else:
+                report_date = f"{current_date.year}-09-30"
+
+            # 获取持股数据
+            df = ak.stock_report_fund_hold(symbol=indicator, date=report_date)
+            
+            # 格式化数据为字典
+            result = {}
+            for _, row in df.iterrows():
+                stock_info = (
+                    f"股票简称: {row['股票简称']}, "
+                    f"持有{indicator[:2]}家数: {row['持有基金家数']}家, "
+                    f"持股总数: {row['持股总数']}股, "
+                    f"持股市值: {row['持股市值']}元, "
+                    f"持股变化: {row['持股变化']}, "
+                    f"持股变动数值: {row['持股变动数值']}股, "
+                    f"持股变动比例: {row['持股变动比例']}%"
+                )
+                result[row['股票代码']] = stock_info
+            
+            return result
+
+        except Exception as e:
+            return {"error": f"获取{indicator}数据时发生错误: {str(e)}"}
+    
     def get_next_financial_report_date(self):
         """
         获取下一个财报发布日期(即将发生的). 返回值：str 格式：yyyymmdd
@@ -1352,6 +1433,44 @@ class StockDataProvider:
         self.comment_cache["stock_comments"] = summary_dict
         
         return summary_dict
+
+    def get_stock_profit_forecast(self, symbol: str) -> str:
+        """
+        获取指定股票的盈利预测数据。symbol: str ,返回str 盈利预测字符串
+
+        参数:
+        symbol (str): 股票代码，例如 "600519"
+
+        返回:
+        str: 格式化的盈利预测信息字符串
+        """
+        if not hasattr(self, 'profit_forecast_cache'):
+            self.profit_forecast_cache = {}
+
+        if not self.profit_forecast_cache:
+            try:
+                df = ak.stock_profit_forecast_em()
+                for _, row in df.iterrows():
+                    code = row['代码']
+                    forecast_info = (
+                        f"名称: {row['名称']}, "
+                        f"研报数: {row['研报数']}, "
+                        f"机构投资评级(近六个月): 买入 {row['机构投资评级(近六个月)-买入']}%, "
+                        f"增持 {row['机构投资评级(近六个月)-增持']}%, "
+                        f"中性 {row['机构投资评级(近六个月)-中性']}%, "
+                        f"减持 {row['机构投资评级(近六个月)-减持']}%, "
+                        f"卖出 {row['机构投资评级(近六个月)-卖出']}%, "
+                        f"2022预测每股收益: {row['2022预测每股收益']:.4f}, "
+                        f"2023预测每股收益: {row['2023预测每股收益']:.4f}, "
+                        f"2024预测每股收益: {row['2024预测每股收益']:.4f}, "
+                        f"2025预测每股收益: {row['2025预测每股收益']:.4f}"
+                    )
+                    self.profit_forecast_cache[code] = forecast_info
+
+            except Exception as e:
+                return f"获取盈利预测数据时发生错误: {str(e)}"
+
+        return self.profit_forecast_cache.get(symbol, f"未找到股票代码 {symbol} 的盈利预测数据")
 
     def get_stock_comments_dataframe(self)->pd.DataFrame:
         """
@@ -2592,6 +2711,61 @@ class StockDataProvider:
         
         return result
 
+    def remove_prefix(self,code: str) -> str:
+        """移除股票代码的前缀"""
+        return code.lstrip('SH').lstrip('SZ').lstrip('BJ')
+
+    def get_xueqiu_hot_follow(self, num: int = 100) -> dict:
+        """获取雪球关注排行榜,参数num: int = 100，返回值Dict[symbol,str]"""
+        df = ak.stock_hot_follow_xq(symbol="最热门")
+        result = {}
+        for _, row in df.head(num).iterrows():
+            code = self.remove_prefix(row['股票代码'])
+            info = f"股票简称: {row['股票简称']}, 关注: {row['关注']:.0f}, 最新价: {row['最新价']:.2f}"
+            result[code] = info
+        return result
+
+    def get_xueqiu_hot_tweet(self, num: int = 100) -> dict:
+        """获取雪球讨论排行榜,参数num: int = 100，返回值Dict[symbol,str]"""
+        df = ak.stock_hot_tweet_xq(symbol="最热门")
+        result = {}
+        for _, row in df.head(num).iterrows():
+            code = self.rremove_prefix(row['股票代码'])
+            info = f"股票简称: {row['股票简称']}, 讨论: {row['关注']:.0f}, 最新价: {row['最新价']:.2f}"
+            result[code] = info
+        return result
+
+    def get_xueqiu_hot_deal(self, num: int = 100) -> dict:
+        """获取雪球交易排行榜,参数num: int = 100，返回值Dict[symbol,str]"""
+        df = ak.stock_hot_deal_xq(symbol="最热门")
+        result = {}
+        for _, row in df.head(num).iterrows():
+            code = self.rremove_prefix(row['股票代码'])
+            info = f"股票简称: {row['股票简称']}, 交易: {row['关注']:.0f}, 最新价: {row['最新价']:.2f}"
+            result[code] = info
+        return result
+
+    def get_wencai_hot_rank(self, num: int = 100) -> dict:
+        """获取问财热门股票排名,参数num: int = 100，返回值Dict[symbol,str]"""
+        date = (datetime.now() - timedelta(days=1)).strftime("%Y%m%d")  # 获取昨天的日期
+        df = ak.stock_hot_rank_wc(date=date)
+        result = {}
+        for _, row in df.head(num).iterrows():
+            code = row['股票代码']
+            info = f"股票简称: {row['股票简称']}, 现价: {row['现价']:.2f}, 涨跌幅: {row['涨跌幅']:.2f}%, 热度: {row['个股热度']:.0f}, 排名: {row['个股热度排名']}"
+            result[code] = info
+        return result
+
+    def get_eastmoney_hot_rank(self, num: int = 100) -> dict:
+        """获取东方财富人气榜-A股,参数num: int = 100，返回值Dict[symbol,str]"""
+        df = ak.stock_hot_rank_em()
+        result = {}
+        for _, row in df.head(num).iterrows():
+            code = self.rremove_prefix(row['代码'])
+            info = f"股票名称: {row['股票名称']}, 最新价: {row['最新价']:.2f}, 涨跌额: {row['涨跌额']:.2f}, 涨跌幅: {row['涨跌幅']:.2f}%"
+            result[code] = info
+        return result
+
     def get_baidu_hotrank(self, hour=7, num=20) -> dict:
         """
         获取百度热门股票排行榜。参数  hour=7, num=20 返回 Dict[symbol,str]
@@ -2660,6 +2834,31 @@ class StockDataProvider:
             result[item['code']] = stock_info
         
         return result
+
+    def get_vote_baidu(self, symbol: str) -> str:
+        """
+        获取百度股市通的股票投票数据。参数 symbol:str 返回str
+
+        参数:
+        symbol (str): A股股票代码，例如 "000001"
+
+        返回:
+        str: 格式化的投票数据字符串
+        """
+        try:
+            # 获取投票数据
+            df = ak.stock_zh_vote_baidu(symbol=symbol, indicator="股票")
+            
+            # 格式化DataFrame为字符串
+            result = f"股票代码 {symbol} 的投票数据：\n"
+            for _, row in df.iterrows():
+                result += (f"{row['周期']}：看涨 {row['看涨']}，看跌 {row['看跌']}，"
+                        f"看涨比例 {row['看涨比例']}，看跌比例 {row['看跌比例']}\n")
+            
+            return result.strip()  # 移除末尾的换行符
+        
+        except Exception as e:
+            return f"获取股票 {symbol} 的投票数据时发生错误: {str(e)}"
 
     def get_baidu_sentiment_rank(self, num=20) -> dict:
         """
@@ -2793,7 +2992,7 @@ class StockDataProvider:
 
     def get_baidu_market_news(self, num: int = 40) -> List[str]:
         """
-        获取百度 A 股市场快讯新闻。 参数 num: int = 40 返回 Dict[symbol,str]
+        获取百度A股市场快讯新闻。参数 num: int = 40 返回 Dict[symbol,str]
 
         参数:
         num (int): 需要获取的新闻数量，默认为40。
@@ -2801,19 +3000,37 @@ class StockDataProvider:
         返回:
         List[str]: 包含格式化新闻信息的字符串列表。
         """
-        # 计算需要请求的页数
-        pages = (num + 5) // 6  # 每页6条新闻，向上取整
-        
         # 获取快讯新闻数据
-        news_list = []
-        for page in range(pages):
-            news_batch = self.baidu_news_api.fetch_express_news_v2(rn=6, pn=page, tag='A股')
-            news_list.extend(news_batch)
-            if len(news_list) >= num:
-                break
+        news_list = self.baidu_news_api.fetch_express_news_v2(rn=num, pn=0, tag='A股')
         
-        # 只保留需要的数量
-        news_list = news_list[:num]
+        # 格式化结果
+        result = []
+        for news_item in news_list:
+            news_time = news_item['ptime']
+            news_info = (
+                f"发布时间: {news_time}\n"
+                f"标题: {news_item['title']}\n"
+                f"内容: {news_item['content']}\n"
+                f"标签: {news_item['tag']}\n"
+                f"来源: {news_item['provider']}\n"
+                f"----------------------"
+            )
+            result.append(news_info)
+        
+        return result
+
+    def get_baidu_important_news(self, num: int = 200) -> List[str]:
+        """
+        获取重要市场新闻。参数 num: int = 200 返回 Dict[symbol,str]
+
+        参数:
+        num (int): 需要获取的新闻数量，默认为40。
+
+        返回:
+        List[str]: 包含格式化新闻信息的字符串列表。
+        """
+        # 获取重要新闻数据
+        news_list = self.baidu_news_api.fetch_express_news_v2(rn=num, pn=0, tag='重要')
         
         # 格式化结果
         result = []
@@ -2946,6 +3163,12 @@ class StockDataProvider:
             - get_baidu_sentiment_rank                  百度情绪指数排名
             - get_baidu_analysis_rank                   百度技术分析排名
             - get_top_holdings_by_market                持仓排名， "北向", "沪股通", "深股通"   "今日排行", "3日排行", "5日排行", "10日排行", "月排行", "季排行", "年排行" 
+            - get_stock_report_fund_hold                获取机构持股报告数据。indicator="基金持仓" 返回dict[symbol,str]    
+            - get_xueqiu_hot_follow                     获取雪球关注排行榜，参数num: int = 100，返回值Dict[symbol,str]
+            - get_xueqiu_hot_tweet                      获取雪球讨论排行榜，参数num: int = 100，返回值Dict[symbol,str]
+            - get_xueqiu_hot_deal                       获取雪球交易排行榜，参数num: int = 100，返回值Dict[symbol,str]
+            - get_wencai_hot_rank                       获取问财热门股票排名，参数num: int = 100，返回值Dict[symbol,str]
+            - get_eastmoney_hot_rank                    获取东方财富人气榜-A股，参数num: int = 100，返回值Dict[symbol,str]
         用于获取市场整体信息的函数：
             - stock_market_desc                         市场平均市盈率等市场指标
             - get_current_buffett_index                 市场的巴菲特指数
@@ -2960,8 +3183,10 @@ class StockDataProvider:
             - get_stock_info                             个股信息，返回个股指标字符串
             - get_stock_a_indicators                     个股指标,返回包含指标信息的字符串
             - get_baidu_analysis_summary                  百度个股分析，返回包含分析信息的字符串
-            - get_stock_news                              个股新闻
+            - get_stock_news                              个股新闻,参数 symbol: str, num: int = 20 返回 List[str]
             - get_news_updates                            获取某个时间以后的个股新闻
+            - get_vote_baidu                              获取百度股市通的股票投票数据。参数 symbol:str 返回str
+            - get_stock_profit_forecast                   获取指定股票的盈利预测数据。symbol: str ,返回str 盈利预测字符串
         用于代码查询的函数
             - search_index_code                         通过名称模糊查询指数代码
             - search_stock_code                         通过名称模糊查询股票代码
@@ -2980,9 +3205,11 @@ class StockDataProvider:
             - get_historical_daily_data                 行情历史数据
             - get_index_data                           指数行情数据
         查询新闻数据
-            - get_baidu_market_news                     百度市场新闻
-            - get_baidu_stock_news                      百度个股新闻
-            - get_market_news_300                       财联社新闻300条
+            - get_baidu_market_news                     百度市场新闻，参数num=40,返回List[str]
+            - get_baidu_stock_news                      百度个股新闻,参数 symbol: str, num: int = 20 返回 List[str]
+            - get_market_news_300                       财联社新闻300条,返回List[str]
+            - get_cctv_news                             新闻联播文字稿，参数天数，返回包含新闻数据的字典列表，每个字典包含date（日期）、title（标题）和content（内容）
+            - get_baidu_important_news                  百度重要新闻，num=200,返回List[str]
         用于新闻数据处理
             - summarizer_news                           把新闻数据根据 query 的要求 总结出短摘要
         用于解析llm_client的json输出
