@@ -47,9 +47,9 @@ class MiniMaxClient(LLMApiClient):
         
         self.stats["api_calls"] += 1
         response = requests.post(self.base_url, headers=self.headers, json=payload, stream=stream)
-        if self.debug:
+        if self.debug and not stream :
             content = response.json()
-            if "id" in content:
+            if  "id" in content:
                 logger.info(f"response ID: {content['id']}")
         response.raise_for_status()
 
@@ -62,6 +62,12 @@ class MiniMaxClient(LLMApiClient):
         for line in response.iter_lines():
             if line:
                 line = line.decode('utf-8')
+                try:
+                    chunk_data = json.loads(line.decode('utf-8'))
+                    if self.debug and "id" in chunk_data:
+                        logger.info(f"response ID: {chunk_data['id']}")
+                except:
+                    pass
                 if line.startswith("data: "):
                     yield json.loads(line[6:])
 

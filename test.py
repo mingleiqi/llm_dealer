@@ -2,10 +2,12 @@
 
 from dealer.stock_data_provider import StockDataProvider
 from core.llms.simple_deep_seek_client import SimpleDeepSeekClient
+from core.llms.mini_max_client import MiniMaxClient
 from dealer.stock_query_stream import StockQueryStream
 
 def test():
-    llm = SimpleDeepSeekClient()
+    llm = MiniMaxClient()
+    llm.debug=True
     data = StockDataProvider(llm)
     query = StockQueryStream(llm,data)
 
