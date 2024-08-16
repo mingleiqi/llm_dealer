@@ -35,6 +35,7 @@ class MiniMaxClient(LLMApiClient):
             "total_tokens": 0
         }
         self.debug = False
+        self._last_id = ""
 
     def _make_request(self, messages: List[Dict[str, str]], stream: bool = False, **kwargs) -> Union[Dict, Generator]:
         payload = {
@@ -63,9 +64,14 @@ class MiniMaxClient(LLMApiClient):
             if line:
                 line = line.decode('utf-8')
                 try:
-                    chunk_data = json.loads(line.decode('utf-8'))
-                    if self.debug and "id" in chunk_data:
+                    if line.startswith("data: "):
+                        json_line = line[6:]
+                        chunk_data = json.loads(json_line)
+                    else:
+                        chunk_data = json.loads(line.decode('utf-8'))
+                    if self.debug and "id" in chunk_data and self._last_id!=chunk_data['id']:
                         logger.info(f"response ID: {chunk_data['id']}")
+                        self._last_id=chunk_data['id']
                 except:
                     pass
                 if line.startswith("data: "):
