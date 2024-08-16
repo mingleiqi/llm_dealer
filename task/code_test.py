@@ -29,8 +29,8 @@ def runner():
     from core.llms.simple_deep_seek_client import SimpleDeepSeekClient
     from core.llms.simple_claude import SimpleClaudeAwsClient
     from core.llms.mini_max_client import MiniMaxClient
-    llm = SimpleDeepSeekClient()
-    #llm.debug=True
+    llm = MiniMaxClient()
+    llm.debug=True
     from dealer.stock_data_provider import StockDataProvider
     data = StockDataProvider(llm)
     code_tools.add_var("llm_client",llm)

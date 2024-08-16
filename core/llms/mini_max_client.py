@@ -47,6 +47,10 @@ class MiniMaxClient(LLMApiClient):
         
         self.stats["api_calls"] += 1
         response = requests.post(self.base_url, headers=self.headers, json=payload, stream=stream)
+        if self.debug:
+            content = response.json()
+            if "id" in content:
+                logger.info(f"response ID: {content['id']}")
         response.raise_for_status()
 
         if stream:
@@ -104,8 +108,7 @@ class MiniMaxClient(LLMApiClient):
             if 'base_resp' in response and response['base_resp']['status_code']!=0:
                 raise Exception(response['base_resp']['status_msg'])
             self.stats["total_tokens"] += response['usage']['total_tokens']
-            if self.debug:
-                logger.info(response["id"])
+
             return response['choices'][0]['message']['content']
 
     def tool_chat(self, user_message: str, tools: List[Dict[str, Any]], function_module: Any, is_stream: bool = False) -> Union[str, Iterator[str]]:
