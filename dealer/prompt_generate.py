@@ -11,6 +11,7 @@ class PromptTemplateGenerator:
 
         initial_prompt = f"""
         请根据以下查询生成一个详细的提示词模板：
+        这个模板会在后续的步骤用于生成代码，以便完成实际的查询请求
 
         查询: {query}
 
@@ -141,77 +142,90 @@ class PromptTemplateGenerator:
         match = re.search(markdown_pattern, content)
         return match.group(1) if match else content
 
-    def _optimize_template(self, template: str, query: str) -> str:
-        # Step 1: Chain of Thought (COT)
-        cot_prompt = f"""
-        请对以下提示词模板进行分析和改进，使用思维链（Chain of Thought）技术：
+    def _optimize_template(self, template: str, query: str, max_iterations: int = 5) -> str:
+        current_template = template
+        iteration = 0
 
-        原始查询: {query}
+        while iteration < max_iterations:
+            # Step 1: Chain of Thought (COT)
+            cot_prompt = f"""
+            请对以下提示词模板进行分析和改进，使用思维链（Chain of Thought）技术：
 
-        原始模板:
-        {template}
+            原始查询: {query}
 
-        请执行以下步骤，并详细解释您的思考过程：
+            当前模板:
+            {current_template}
 
-        1. 分析模板的每个部分，说明它如何满足查询需求。
-        2. 识别可能的改进点，如遗漏的重要信息、步骤的逻辑顺序等。
-        3. 考虑如何使模板更加清晰、全面和有效。
-        4. 提出具体的改进建议。
+            请执行以下步骤，并详细解释您的思考过程：
 
-        请提供详细的分析和建议。
-        """
+            1. 分析模板的每个部分，说明它如何满足查询需求。
+            2. 识别可能的改进点，如遗漏的重要信息、步骤的逻辑顺序等。
+            3. 考虑如何使模板更加清晰、全面和有效。
+            4. 提出具体的改进建议。
 
-        cot_analysis = self.llm_client.one_chat(cot_prompt)
+            请提供详细的分析和建议。
+            """
 
-        # Step 2: Self-Reflection
-        reflection_prompt = f"""
-        请对以下思维链分析进行自我反思，并提出进一步的改进建议：
+            cot_analysis = self.llm_client.one_chat(cot_prompt)
 
-        原始查询: {query}
+            # Step 2: Self-Reflection
+            reflection_prompt = f"""
+            请对以下思维链分析进行自我反思，并提出进一步的改进建议：
 
-        原始模板:
-        {template}
+            原始查询: {query}
 
-        思维链分析:
-        {cot_analysis}
+            当前模板:
+            {current_template}
 
-        请执行以下步骤：
+            思维链分析:
+            {cot_analysis}
 
-        1. 评估思维链分析的质量和完整性。
-        2. 识别分析中可能存在的偏见或逻辑缺陷。
-        3. 考虑是否有任何重要的角度或方法被忽视。
-        4. 基于这些反思，提出额外的改进建议。
+            请执行以下步骤：
 
-        请提供您的自我反思结果和最终的改进建议。
-        """
+            1. 评估思维链分析的质量和完整性。
+            2. 识别分析中可能存在的偏见或逻辑缺陷。
+            3. 考虑是否有任何重要的角度或方法被忽视。
+            4. 基于这些反思，提出额外的改进建议。
+            5. 评估是否还需要进一步优化，如果认为当前模板已经足够好，请明确说明。
 
-        reflection_result = self.llm_client.one_chat(reflection_prompt)
+            请提供您的自我反思结果、改进建议，以及是否需要继续优化的结论。
+            """
 
-        # Step 3: Apply improvements
-        final_optimization_prompt = f"""
-        请基于原始模板、思维链分析和自我反思的结果，生成一个优化后的提示词模板：
+            reflection_result = self.llm_client.one_chat(reflection_prompt)
 
-        原始查询: {query}
+            # Check if further optimization is needed
+            if "不需要" in reflection_result or "足够好" in reflection_result:
+                break
 
-        原始模板:
-        {template}
+            # Step 3: Apply improvements
+            final_optimization_prompt = f"""
+            请基于当前模板、思维链分析和自我反思的结果，生成一个优化后的提示词模板：
 
-        思维链分析:
-        {cot_analysis}
+            原始查询: {query}
 
-        自我反思和改进建议:
-        {reflection_result}
+            当前模板:
+            {current_template}
 
-        请生成一个优化后的提示词模板，确保：
-        1. 充分吸收思维链分析和自我反思中的有效建议
-        2. 模板结构清晰，易于理解和执行
-        3. 充分利用可用的数据提供方法
-        4. 全面覆盖查询需求
-        5. 包含必要的分析步骤和注意事项
+            思维链分析:
+            {cot_analysis}
 
-        请使用 markdown 格式提供优化后的模板。
-        结果以```markdown  ```包裹，不要添加如何解释
-        """
+            自我反思和改进建议:
+            {reflection_result}
 
-        optimized_template = self.llm_client.one_chat(final_optimization_prompt)
-        return self._extract_markdown(optimized_template)
+            请生成一个优化后的提示词模板，确保：
+            1. 充分吸收思维链分析和自我反思中的有效建议
+            2. 模板结构清晰，易于理解和执行
+            3. 充分利用可用的数据提供方法
+            4. 全面覆盖查询需求
+            5. 包含必要的分析步骤和注意事项
+
+            请使用 markdown 格式提供优化后的模板。
+            结果以```markdown  ```包裹，不要添加任何解释
+            """
+
+            optimized_template = self.llm_client.one_chat(final_optimization_prompt)
+            current_template = self._extract_markdown(optimized_template)
+
+            iteration += 1
+
+        return current_template
