@@ -9,7 +9,7 @@ set ENV_PATH=%SCRIPT_DIR%\env
 
 :: 检查指定的路径是否已安装 Conda
 set CONDA_FOUND=0
-for %%P in (C:\Users\%USERNAME%\miniconda3 c:\app\conda\ d:\app\conda\) do (
+for %%P in (C:\miniconda3 D:\miniconda3 C:\Users\%USERNAME%\miniconda3 c:\app\conda\ d:\app\conda\ C:\Users\%USERNAME%\anaconda3 c:\anaconda3  d:\anaconda3) do (
     if exist "%%P\Scripts\conda.exe" (
         set CONDA_FOUND=1
         set MINICONDA_PATH=%%P
