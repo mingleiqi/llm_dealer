@@ -116,6 +116,8 @@ class ContractState:
         self.current_date = None
         self.total_profit = 0
         self.night_closing_time = None
+        self.last_news_time = None
+        self.news_summary = ""
 
 class LLMFuturesDealer:
     def __init__(self, llm_client, symbols: List[str], data_provider: MainContractProvider, trade_rules: str = "",
@@ -181,54 +183,108 @@ class LLMFuturesDealer:
             return news_df.sort_values('publish_time', ascending=False)
         return pd.DataFrame()
 
-    def _summarize_news(self, news_df):
+    def _summarize_news(self, news_df: pd.DataFrame) -> str:
+        """
+        使用LLM客户端summarize新闻。
+        
+        :param news_df: 包含新闻的DataFrame
+        :return: 汇总后的新闻摘要
+        """
         if news_df.empty:
             return ""
 
-        news_text = "\n".join(f"- {row['title']}" for _, row in news_df.iterrows())
-        prompt = f"请将以下新闻整理成不超过200字的今日交易提示简报：\n\n{news_text}"
-        
-        summary = self.llm_client.one_chat(prompt)
-        return summary[:200]
+        try:
+            news_text = "\n".join(f"- {row['title']}: {row['content'][:100]}..." for _, row in news_df.iterrows())
+            prompt = f"请将以下新闻整理成不超过200字的今日交易提示简报：\n\n{news_text}"
+            
+            summary = self.llm_client.one_chat(prompt)
+            return summary[:200]  # 确保摘要不超过200字
+        except Exception as e:
+            self.logger.error(f"Error summarizing news: {str(e)}")
+            return "无法汇总新闻，请查看原始新闻内容。"
 
-    def _update_news(self, symbol: str, current_datetime):
+    def _update_news(self, symbol: str, current_datetime: datetime) -> bool:
+        """
+        更新指定合约的新闻信息。
+        
+        :param symbol: 合约代码
+        :param current_datetime: 当前日期时间
+        :return: 如果新闻被更新则返回True，否则返回False
+        """
         if self.is_backtest:
             return False
 
         try:
+            contract_state = self.contract_states[symbol]
+            
+            # 获取最新新闻
             news_df = self._get_latest_news(symbol)
             if news_df.empty:
                 self.logger.info(f"No new news available for {symbol}")
                 return False
 
-            def safe_parse_time(time_str):
+            def safe_parse_time(time_str: str) -> Optional[datetime]:
                 try:
-                    return pd.to_datetime(int(time_str) / 1000, unit='s', utc=True).tz_convert(beijing_tz)
+                    # 假设时间戳是毫秒级的
+                    return pd.to_datetime(int(time_str) / 1000, unit='s', utc=True).tz_convert(self.timezone)
                 except ValueError:
+                    # 如果失败，尝试直接解析字符串
                     try:
-                        return pd.to_datetime(time_str).tz_localize(beijing_tz)
-                    except:
-                        self.logger.error(f"Failed to parse news time: {time_str}")
+                        return pd.to_datetime(time_str).tz_localize(self.timezone)
+                    except Exception as e:
+                        self.logger.error(f"Failed to parse news time: {time_str}. Error: {str(e)}")
                         return None
 
             latest_news_time = safe_parse_time(news_df['publish_time'].iloc[0])
             
             if latest_news_time is None:
-                self.logger.warning("Failed to parse latest news time, skipping news update")
+                self.logger.warning(f"Failed to parse latest news time for {symbol}, skipping news update")
                 return False
 
-            if self.last_news_time is None or latest_news_time > self.last_news_time:
-                self.last_news_time = latest_news_time
+            if contract_state.last_news_time is None or latest_news_time > contract_state.last_news_time:
+                contract_state.last_news_time = latest_news_time
+                
+                # 汇总新闻
                 new_summary = self._summarize_news(news_df)
-                if new_summary != self.news_summary:
-                    self.news_summary = new_summary
-                    self.logger.info(f"Updated news summary for {symbol}: {self.news_summary[:100]}...")
+                
+                if new_summary != contract_state.news_summary:
+                    contract_state.news_summary = new_summary
+                    self.logger.info(f"Updated news summary for {symbol}: {contract_state.news_summary[:100]}...")
+                    
+                    # 记录完整的新闻摘要到日志文件
+                    self._log_full_news_summary(symbol, contract_state.news_summary)
+                    
                     return True
+                else:
+                    self.logger.info(f"No significant changes in news summary for {symbol}")
+            else:
+                self.logger.debug(f"No new news for {symbol} since last update")
 
             return False
         except Exception as e:
             self.logger.error(f"Error in _update_news for {symbol}: {str(e)}", exc_info=True)
             return False
+
+    def _log_full_news_summary(self, symbol: str, news_summary: str):
+        """
+        将完整的新闻摘要记录到单独的日志文件中。
+        
+        :param symbol: 合约代码
+        :param news_summary: 新闻摘要
+        """
+        try:
+            os.makedirs('./output/news_logs', exist_ok=True)
+            current_date = datetime.now().strftime('%Y%m%d')
+            file_path = f'./output/news_logs/news_summary_{symbol}_{current_date}.log'
+            
+            with open(file_path, 'a', encoding='utf-8') as f:
+                f.write(f"[{datetime.now()}] News Summary for {symbol}:\n")
+                f.write(news_summary)
+                f.write("\n\n")
+            
+            self.logger.info(f"Full news summary for {symbol} logged to {file_path}")
+        except Exception as e:
+            self.logger.error(f"Error logging full news summary for {symbol}: {str(e)}")
 
     def _is_trading_time(self, dt: datetime) -> bool:
         t = dt.time()
@@ -585,24 +641,28 @@ class LLMFuturesDealer:
         contract_state = self.contract_states[symbol]
         day_closing_time = dt_time(14, 55)
         night_session_start = dt_time(21, 0)
+        night_session_end = dt_time(2, 30)
+        morning_session_start = dt_time(9, 0)
 
         current_time = current_datetime.time()
-        is_day_session = current_time < night_session_start and current_time >= dt_time(9, 0)
-        is_night_session = current_time >= night_session_start or current_time < dt_time(9, 0)
+        is_day_session = morning_session_start <= current_time < day_closing_time
+        is_night_session = night_session_start <= current_time or current_time < night_session_end
 
         if is_day_session and current_time >= day_closing_time:
             self._close_all_positions(symbol, current_price, current_datetime)
             self.logger.info(f"{symbol}: 日盘强制平仓")
-        elif is_night_session and contract_state.night_closing_time:
-            # Check if it's within 5 minutes of the night closing time
-            closing_window_start = (datetime.combine(datetime.min, contract_state.night_closing_time) - timedelta(minutes=5)).time()
-            if closing_window_start <= current_time <= contract_state.night_closing_time:
-                self._close_all_positions(symbol, current_price, current_datetime)
-                self.logger.info(f"{symbol}: 夜盘强制平仓")
+        elif is_night_session:
+            if contract_state.night_closing_time:
+                closing_window_start = (datetime.combine(datetime.min, contract_state.night_closing_time) - timedelta(minutes=5)).time()
+                if closing_window_start <= current_time <= contract_state.night_closing_time:
+                    self._close_all_positions(symbol, current_price, current_datetime)
+                    self.logger.info(f"{symbol}: 夜盘强制平仓")
+                else:
+                    self.logger.info(f"{symbol}: 夜盘交易，当前仓位：{contract_state.position_manager.get_current_position()}")
             else:
-                self.logger.info(f"{symbol}: 夜盘交易，当前仓位：{contract_state.position_manager.get_current_position()}")
-        elif is_night_session and not contract_state.night_closing_time:
-            self.logger.info(f"{symbol}: 夜盘交易（无强制平仓时间），当前仓位：{contract_state.position_manager.get_current_position()}")
+                self.logger.info(f"{symbol}: 夜盘交易（无强制平仓时间），当前仓位：{contract_state.position_manager.get_current_position()}")
+        elif night_session_end <= current_time < morning_session_start:
+            self.logger.info(f"{symbol}: 非交易时间，当前仓位：{contract_state.position_manager.get_current_position()}")
 
     def _get_today_bar_index(self, symbol: str, timestamp: pd.Timestamp) -> int:
         contract_state = self.contract_states[symbol]
@@ -631,17 +691,19 @@ class LLMFuturesDealer:
             os.makedirs('./output', exist_ok=True)
 
             current_date = datetime.now().strftime('%Y%m%d')
-            file_handler = next((h for h in self.logger.handlers if isinstance(h, logging.FileHandler) and h.baseFilename.endswith(f'{current_date}.log')), None)
+            file_path = f'./output/log_{current_date}.log'
+            
+            file_handler = next((h for h in self.logger.handlers if isinstance(h, logging.FileHandler) and h.baseFilename == file_path), None)
             
             if not file_handler:
-                file_path = f'./output/log_{symbol}_{current_date}.log'
                 file_handler = logging.FileHandler(file_path)
                 file_handler.setLevel(logging.DEBUG)
                 file_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
                 self.logger.addHandler(file_handler)
 
+                # Remove old file handlers
                 for handler in self.logger.handlers[:]:
-                    if isinstance(handler, logging.FileHandler) and not handler.baseFilename.endswith(f'{current_date}.log'):
+                    if isinstance(handler, logging.FileHandler) and handler.baseFilename != file_path:
                         self.logger.removeHandler(handler)
                         handler.close()
 
@@ -702,7 +764,7 @@ class LLMFuturesDealer:
             self.logger.warning("Using current time as fallback")
             return datetime.now(beijing_tz)
 
-    def process_bar(self, symbol: str, bar: pd.Series, news: str = "") -> Tuple[str, Union[int, str], str]:
+    def process_bar(self, symbol: str, bar: pd.Series, news: str = "") -> Tuple[str, Union[int, str], str, str, str]:
         try:
             contract_state = self.contract_states[symbol]
             time_key = 'time' if 'time' in bar else 'datetime'
@@ -722,11 +784,11 @@ class LLMFuturesDealer:
                 contract_state.last_trade_date = bar_date
                 
                 if not self.is_backtest:
-                    self.last_news_time = None
-                    self.news_summary = ""
+                    contract_state.last_news_time = None
+                    contract_state.news_summary = ""
 
             if not self._is_trading_time(bar['datetime']):
-                return "hold", 0, ""
+                return "hold", 0, "非交易时间", "当前时间不在交易时段", "等待下一个交易时段"
 
             contract_state.today_minute_bars = pd.concat([contract_state.today_minute_bars, bar.to_frame().T], ignore_index=True)
 
