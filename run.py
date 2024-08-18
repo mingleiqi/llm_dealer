@@ -6,5 +6,5 @@ if __name__ == '__main__':
     llm = SimpleClaudeAwsClient()
     data = StockDataProvider(llm)
     generator = PromptTemplateGenerator(data,llm)
-    result = generator.generate_prompt("个股行情预测")
+    result = generator.generate_prompt("新闻解读")
     print(result)
