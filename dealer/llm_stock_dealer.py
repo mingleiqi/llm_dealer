@@ -244,14 +244,14 @@ class LLMStockDealer:
             if not position.is_closed():
                 try:
                     current_price = self.data_provider.get_latest_price(position.symbol)
-                    position_value = position.total_quantity * current_price
+                    position_value = position.quantity * current_price
                     total_assets += position_value
                 except Exception as e:
                     self.logger.error(f"Error calculating value for position {position.symbol}: {str(e)}")
                     # 使用上次已知的价格或入场价格作为备选
                     fallback_price = position.entry_price
                     self.logger.warning(f"Using fallback price {fallback_price} for {position.symbol}")
-                    total_assets += position.total_quantity * fallback_price
+                    total_assets += position.quantity * fallback_price
 
         self.logger.info(f"Total assets calculated: {total_assets:.2f}")
         return total_assets
