@@ -58,7 +58,7 @@ class TradePositionManager:
     def __init__(self):
         self.positions: List[TradePosition] = []
 
-    def open_position(self, price: float, quantity: int, is_long: bool, entry_time: pd.Timestamp):
+    def open_position(self, price: float, quantity: int, is_long: bool, entry_time: pd.Timestamp, trade_plan: str = ''):
         position_type = PositionType.LONG if is_long else PositionType.SHORT
         for _ in range(quantity):
             self.positions.append(TradePosition(price, position_type, entry_time))
