@@ -156,7 +156,7 @@ class LLMStockDealer:
         logger.addHandler(console_handler)
 
         os.makedirs('./output', exist_ok=True)
-        file_handler = logging.FileHandler(f'./output/stock_dealer_log_{datetime.now().strftime("%Y%m%d")}.log')
+        file_handler = logging.FileHandler(f'./output/stock_dealer_log_{datetime.now().strftime("%Y%m%d")}.log',encoding="utf-8")
         file_handler.setLevel(logging.DEBUG)
         file_handler.setFormatter(formatter)
         logger.addHandler(file_handler)
