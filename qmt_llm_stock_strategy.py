@@ -187,7 +187,9 @@ class LLMQMTStockStrategy(XtQuantTraderCallback):
 
     def on_bar_data(self, data):
         """处理实时行情数据的回调函数"""
+        
         current_time = time.time()
+        print(current_time)
         
         for stock, bar_data in data.items():
             if stock in self.dealer.portfolio.get_all_stocks():

@@ -19,7 +19,7 @@ class StockPosition:
     def __init__(self, symbol: str, entry_price: float, quantity: int, entry_time: datetime, position_type: str):
         self.symbol = symbol
         self.entry_price = entry_price
-        self.total_quantity = quantity
+        self.quantity = quantity
         self.available_quantity = 0
         self.today_quantity = quantity
         self.entry_time = entry_time
@@ -39,26 +39,26 @@ class StockPosition:
         self.exit_price = exit_price
         self.exit_time = exit_time
         self.available_quantity -= quantity
-        self.total_quantity -= quantity
+        self.quantity -= quantity
 
-        if self.total_quantity == 0:
+        if self.quantity == 0:
             return None  # Position fully closed
-        elif self.total_quantity > 0:
+        elif self.quantity > 0:
             return self  # Position partially closed
         else:
             raise ValueError("Total quantity became negative after closing position")
 
     def calculate_profit(self, current_price: float) -> float:
-        return (current_price - self.entry_price) * self.total_quantity
+        return (current_price - self.entry_price) * self.quantity
 
     def is_closed(self) -> bool:
-        return self.total_quantity == 0
+        return self.quantity == 0
 
     def to_dict(self):
         return {
             "symbol": self.symbol,
             "entry_price": self.entry_price,
-            "total_quantity": self.total_quantity,
+            "quantity": self.quantity,
             "available_quantity": self.available_quantity,
             "today_quantity": self.today_quantity,
             "entry_time": self.entry_time.isoformat(),
@@ -72,7 +72,7 @@ class StockPosition:
         position = cls(
             data['symbol'],
             data['entry_price'],
-            data['total_quantity'],
+            data['quantity'],
             datetime.fromisoformat(data['entry_time']),
             data['position_type']
         )
@@ -243,13 +243,13 @@ class LLMStockDealer:
             if not position.is_closed():
                 try:
                     current_price = self.data_provider.get_latest_price(position.symbol)
-                    position_value = position.total_quantity * current_price
+                    position_value = position.quantity * current_price
                     total_assets += position_value
                 except Exception as e:
                     self.logger.error(f"Error calculating value for position {position.symbol}: {str(e)}")
                     # 如果无法获取最新价格，我们可以选择使用上次已知的价格，或者跳过这个持仓
                     # 这里我们选择使用持仓的入场价格作为后备
-                    total_assets += position.total_quantity * position.entry_price
+                    total_assets += position.quantity * position.entry_price
 
         self.logger.info(f"Total assets calculated: {total_assets:.2f}")
         return total_assets
