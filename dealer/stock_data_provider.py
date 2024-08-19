@@ -2593,6 +2593,8 @@ class StockDataProvider:
         """
         try:
             # 使用 akshare 的 stock_bid_ask_em 函数获取行情数据
+            if "." in symbol:
+                symbol= symbol.split(".")[0]
             df = ak.stock_bid_ask_em(symbol=symbol)
             
             # 从返回的数据中提取最新价格
