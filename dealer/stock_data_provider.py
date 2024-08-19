@@ -2030,6 +2030,8 @@ class StockDataProvider:
         异常:
         ValueError: 如果无法获取股票新闻
         """
+        if "." in symbol:
+            symbol = symbol.split(".")[0]
         try:
             # 计算起始日期
             end_date = datetime.now()
@@ -2090,6 +2092,8 @@ class StockDataProvider:
         异常:
         ValueError: 如果无法获取股票数据
         """
+        if "." in symbol:
+            symbol = symbol.split(".")[0]
         try:
             # 使用 akshare 的 stock_bid_ask_em 函数获取最新行情数据
             df = ak.stock_bid_ask_em(symbol=symbol)
@@ -2561,6 +2565,8 @@ class StockDataProvider:
         返回:
         float: 计算得到的波动率
         """
+        if "." in symbol:
+            symbol = symbol.split(".")[0]
         # 获取历史收盘价数据
         end_date = datetime.now().strftime('%Y%m%d')
         start_date = (datetime.now() - timedelta(days=period)).strftime('%Y%m%d')
