@@ -77,8 +77,9 @@ class StockPosition:
             data['position_type']
         )
         position.available_quantity = data['available_quantity']
-        position.today_quantity = data['today_quantity']
-        if data['exit_price']:
+        if "today_quantity" in data:
+            position.today_quantity = data['today_quantity']
+        if "exit_price" in data and data['exit_price']:
             position.exit_price = data['exit_price']
             position.exit_time = datetime.fromisoformat(data['exit_time'])
         return position
